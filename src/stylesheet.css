@@ -58,6 +58,17 @@ td {
   padding: 0.2em 0.4em;
 }
 
+/* A row of a wide table, as a block: a rule above it separates it from the previous one. */
+.table-row {
+  margin: 0.8em 0;
+  padding-top: 0.4em;
+  border-top: 1px solid black;
+}
+
+.table-row p {
+  margin-bottom: 0.2em;
+}
+
 a {
   color: inherit;
 }

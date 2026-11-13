@@ -66,6 +66,7 @@ In the pages:
 
 - `[[links]]` to a note of the book lead to its page. Links to notes outside the book keep their text and lose the link;
 - callouts become framed blocks headed by their title, or by their kind (`[!tip]` gives "Tip", or "Astuce" with `--lang fr`). An untitled `[!quote]` stays a plain quote;
+- tables of 5 columns or more, too wide for a small screen, become one block per row: the row's first cell as a bold title, then one `Header: value` line per other column, empty cells left out. Narrower tables stay tables;
 - note properties (the YAML frontmatter) and comments (`%%…%%`) are left out.
 
 reliure finds notes by name, as Obsidian links do, so note names must be unique across the vault. Hidden folders (`.obsidian`, `.trash`) are skipped.
@@ -84,7 +85,7 @@ Use the IP address shown on the reader's screen if `crosspoint.local` doesn't re
 
 ## Limits
 
-Not handled yet: embedded images and notes (`![[…]]`), highlights (`==…==`) and footnotes. A link to a heading (`[[Note#Heading]]`) leads to the note's page and keeps `#Heading` in its text. Tables are kept, but wide ones are hard to read on a small screen.
+Not handled yet: embedded images and notes (`![[…]]`), highlights (`==…==`) and footnotes. A link to a heading (`[[Note#Heading]]`) leads to the note's page and keeps `#Heading` in its text.
 
 ## Development
 
