@@ -1,49 +1,9 @@
-use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
+//! The callouts pass: Obsidian callouts become framed blocks headed by their title, or by their
+//! kind's name in the book's language; untitled quote callouts stay plain blockquotes.
+use pulldown_cmark::{Event, Tag, TagEnd};
 use pulldown_cmark_escape::escape_html;
 
-use crate::book::note_name;
 use crate::lang::Lang;
-
-/// Renders an Obsidian note body to an XHTML fragment.
-///
-/// `href_of` gives the target of a `[[link]]` inside the book, from the linked note's name;
-/// a link to a note outside the book keeps its text and loses its link. Callouts become
-/// framed blocks headed by their title, or by their kind's name in `lang`; untitled quotes
-/// stay plain blockquotes.
-pub fn to_xhtml(markdown: &str, lang: Lang, href_of: impl Fn(&str) -> Option<String>) -> String {
-    let options = Options::ENABLE_WIKILINKS
-        | Options::ENABLE_TABLES
-        | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TASKLISTS;
-    // Links don't nest, so one flag pairs a dropped link's End with its Start.
-    let mut dropping_link = false;
-    let events: Vec<Event> = Parser::new_ext(markdown, options)
-        .filter_map(|event| match event {
-            Event::Start(Tag::Link { link_type: LinkType::WikiLink { .. }, dest_url, .. }) => {
-                match href_of(note_name(&dest_url)) {
-                    Some(href) => Some(Event::Start(Tag::Link {
-                        link_type: LinkType::Inline,
-                        dest_url: CowStr::from(href),
-                        title: CowStr::from(""),
-                        id: CowStr::from(""),
-                    })),
-                    None => {
-                        dropping_link = true;
-                        None
-                    }
-                }
-            }
-            Event::End(TagEnd::Link) if dropping_link => {
-                dropping_link = false;
-                None
-            }
-            other => Some(other),
-        })
-        .collect();
-    let mut xhtml = String::new();
-    html::push_html(&mut xhtml, rewrite_callouts(events, lang).into_iter());
-    xhtml
-}
 
 /// The header of an Obsidian callout, the first line of its blockquote: `[!warning] Pièges`.
 #[derive(Debug, PartialEq)]
@@ -104,7 +64,7 @@ fn capitalize(word: &str) -> String {
 
 /// Turns the blockquotes that open with a callout header into `div.callout` blocks with their
 /// title, and strips the header off untitled quote callouts, which stay blockquotes.
-fn rewrite_callouts(events: Vec<Event<'_>>, lang: Lang) -> Vec<Event<'_>> {
+pub(super) fn rewrite(events: Vec<Event<'_>>, lang: Lang) -> Vec<Event<'_>> {
     let mut out = Vec::with_capacity(events.len());
     // One entry per open blockquote: whether it closes as a callout div.
     let mut open_quotes: Vec<bool> = Vec::new();
@@ -192,26 +152,10 @@ fn callout_opening(kind: &str, title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn href_of(name: &str) -> Option<String> {
-        (name == "In book").then(|| "note-1.xhtml".to_string())
-    }
+    use crate::render::to_xhtml;
 
     fn no_links(_: &str) -> Option<String> {
         None
-    }
-
-    #[test]
-    fn links_inside_the_book_point_to_their_page() {
-        assert_eq!(
-            to_xhtml("See [[In book|this note]] and [[In book#Part]].", Lang::En, href_of),
-            "<p>See <a href=\"note-1.xhtml\">this note</a> and <a href=\"note-1.xhtml\">In book#Part</a>.</p>\n"
-        );
-    }
-
-    #[test]
-    fn links_outside_the_book_keep_their_text() {
-        assert_eq!(to_xhtml("See [[Elsewhere]].", Lang::En, href_of), "<p>See Elsewhere.</p>\n");
     }
 
     #[test]
