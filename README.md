@@ -6,6 +6,7 @@ Bind Obsidian notes into EPUB books, to read them on an e-reader.
 reliure ~/vault                              # one EPUB per hub marked `book: true`, in the current folder
 reliure ~/vault --out ~/Books --lang fr      # French metadata and callout headings
 reliure ~/vault --property ereader           # books are the hubs marked `ereader: true`
+reliure ~/vault --send crosspoint.local      # also upload them to a CrossPoint e-reader
 ```
 
 A book is a hub note, a note that lists other notes, with its sections as chapters. The EPUB keeps the links between the notes it binds, and renders callouts as framed blocks. It sticks to plain XHTML and a short stylesheet, so it reads well on small e-ink screens and on firmwares with a basic renderer (KOReader, CrossPoint).
@@ -30,6 +31,8 @@ reliure [OPTIONS] <VAULT>
 | `--out <DIR>` | Folder the EPUB files are written to (default: current folder) |
 | `--property <NAME>` | Checkbox property marking a hub as a book (default: `book`) |
 | `--lang <en\|fr>` | Language of the books: EPUB metadata and callout headings (default: `en`) |
+| `--send <HOST>` | Also upload each book to a CrossPoint e-reader at this host |
+| `--folder <PATH>` | Folder of the e-reader the books go to, with `--send` (default: `/`) |
 
 Each book is written as `<hub name>.epub`, replacing the previous file.
 
@@ -69,7 +72,15 @@ reliure finds notes by name, as Obsidian links do, so note names must be unique 
 
 ## Getting the books on a reader
 
-Copy the EPUB files as any other book: over USB, with Calibre, or through the reader's Wi-Fi upload page (on CrossPoint, `http://crosspoint.local`).
+Copy the EPUB files as any other book: over USB, with Calibre, or through the reader's Wi-Fi upload page.
+
+On a [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) e-reader, `--send` does it for you. Put the reader in File Transfer mode, then:
+
+```sh
+reliure ~/vault --send crosspoint.local --folder /Books
+```
+
+Use the IP address shown on the reader's screen if `crosspoint.local` doesn't resolve on your network. Each book replaces the file of the same name, and shows up in the Library the next time it opens. The connection is plain HTTP, as CrossPoint serves it, so send from a network you trust.
 
 ## Limits
 

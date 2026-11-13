@@ -1,4 +1,5 @@
 mod book;
+mod crosspoint;
 mod epub;
 mod lang;
 mod note;
@@ -29,6 +30,13 @@ struct Cli {
     /// Language of the books: EPUB metadata and callout headings.
     #[arg(long, value_enum, default_value_t = Lang::En)]
     lang: Lang,
+    /// Also upload the books to a CrossPoint e-reader in File Transfer mode, at this host
+    /// (`crosspoint.local`, or the IP address shown on its screen).
+    #[arg(long, value_name = "HOST")]
+    send: Option<String>,
+    /// Folder of the e-reader the books are uploaded to.
+    #[arg(long, default_value = "/", requires = "send")]
+    folder: String,
 }
 
 fn main() -> Result<()> {
@@ -43,6 +51,10 @@ fn main() -> Result<()> {
         let path = cli.out.join(format!("{}.epub", hub.name));
         epub::write(&book, &vault, cli.lang, &path)?;
         println!("{}", path.display());
+        if let Some(host) = &cli.send {
+            crosspoint::upload(host, &cli.folder, &path)?;
+            println!("  sent to {host}:{}", cli.folder);
+        }
     }
     Ok(())
 }
