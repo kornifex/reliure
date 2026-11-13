@@ -142,4 +142,11 @@ mod tests {
         );
         assert_eq!(book.chapters[0].notes, ["A"]);
     }
+
+    #[test]
+    fn a_hub_whose_list_item_is_commented_out_binds_nothing() {
+        let hub = crate::note::parse("Hub".into(), "## Design\n%%\n- [[A]]\n%%\n- %%[[B]]%%\n").unwrap();
+        let book = plan(&hub, |_| true);
+        assert!(book.chapters[0].notes.is_empty());
+    }
 }

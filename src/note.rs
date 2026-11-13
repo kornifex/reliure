@@ -1,4 +1,7 @@
+use std::ops::Range;
+
 use anyhow::{Context, Result};
+use pulldown_cmark::{Event, Parser, Tag};
 use serde_yaml_ng::{Mapping, Value};
 
 /// A note of the vault, its name being the file name without `.md`, as `[[links]]` write it.
@@ -28,8 +31,39 @@ pub fn parse(name: String, text: &str) -> Result<Note> {
     Ok(Note {
         name,
         properties,
-        body: body.to_string(),
+        body: strip_comments(body),
     })
+}
+
+/// Removes the Obsidian comments, `%%…%%`, from a body.
+///
+/// `%%` inside inline code or a code block is text. An unclosed `%%` hides the rest of the
+/// body, as in Obsidian.
+fn strip_comments(body: &str) -> String {
+    let code = code_ranges(body);
+    let mut marks = body
+        .match_indices("%%")
+        .map(|(start, _)| start)
+        .filter(|start| !code.iter().any(|range| range.contains(start)));
+    let mut stripped = String::with_capacity(body.len());
+    let mut kept_from = 0;
+    while let Some(open) = marks.next() {
+        stripped.push_str(&body[kept_from..open]);
+        kept_from = marks.next().map_or(body.len(), |close| close + "%%".len());
+    }
+    stripped.push_str(&body[kept_from..]);
+    stripped
+}
+
+/// The byte ranges of a body's inline code and code blocks, delimiters included.
+fn code_ranges(body: &str) -> Vec<Range<usize>> {
+    Parser::new(body)
+        .into_offset_iter()
+        .filter_map(|(event, range)| match event {
+            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => Some(range),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Splits the YAML frontmatter, between two `---` lines at the top, from the body.
@@ -72,5 +106,30 @@ mod tests {
         let note = parse("Note".into(), "---\n---\nBody").unwrap();
         assert!(note.properties.is_empty());
         assert_eq!(note.body, "Body");
+    }
+
+    #[test]
+    fn an_inline_comment_is_removed() {
+        let note = parse("Note".into(), "a %%hidden%% b\n").unwrap();
+        assert_eq!(note.body, "a  b\n");
+    }
+
+    #[test]
+    fn a_comment_spanning_lines_is_removed() {
+        let note = parse("Note".into(), "---\nbook: true\n---\nBefore\n%%\nhidden\n- [[A]]\n%%\nAfter\n").unwrap();
+        assert!(note.is_checked("book"));
+        assert_eq!(note.body, "Before\n\nAfter\n");
+    }
+
+    #[test]
+    fn percent_signs_in_code_are_kept() {
+        let text = "Type `%%x%%` here.\n\n```\n%% kept %%\n```\n";
+        assert_eq!(parse("Note".into(), text).unwrap().body, text);
+    }
+
+    #[test]
+    fn an_unclosed_comment_hides_the_rest_of_the_note() {
+        let note = parse("Note".into(), "Shown %% hidden\n\n`code`\nstill hidden\n").unwrap();
+        assert_eq!(note.body, "Shown ");
     }
 }
