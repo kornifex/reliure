@@ -89,9 +89,19 @@ Not handled yet: embedded images and notes (`![[…]]`), highlights (`==…==`) 
 
 ## Development
 
+The CI runs these checks on every pull request, and the tests on Rust 1.87 too:
+
 ```sh
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings   # lints set in Cargo.toml and clippy.toml
 cargo test
-cargo clippy --all-targets
+cargo deny check                            # advisories, licenses: cargo install cargo-deny
+```
+
+To skip the formatting commits in `git blame`:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
 ## License
