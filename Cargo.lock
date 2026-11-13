@@ -797,6 +797,7 @@ dependencies = [
  "serde_yaml_ng",
  "tempfile",
  "walkdir",
+ "zip",
 ]
 
 [[package]]
