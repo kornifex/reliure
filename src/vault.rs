@@ -61,7 +61,10 @@ impl Vault {
 
     /// Indexes `notes` as links find them.
     pub fn from_notes(notes: impl IntoIterator<Item = Note>) -> Vault {
-        let mut keyed: Vec<(Key, Note)> = notes.into_iter().map(|note| (note_key(&note), note)).collect();
+        let mut keyed: Vec<(Key, Note)> = notes
+            .into_iter()
+            .map(|note| (note_key(&note), note))
+            .collect();
         keyed.sort_by(|(a, _), (b, _)| a.cmp(b));
         let (keys, notes) = keyed.into_iter().unzip();
         Vault { notes, keys }
@@ -74,12 +77,18 @@ impl Vault {
         let key = target_key(target);
         let start = self.keys.partition_point(|other| *other < key);
         let len = self.keys[start..].partition_point(|other| other.starts_with(&key));
-        let (notes, keys) = (&self.notes[start..start + len], &self.keys[start..start + len]);
+        let (notes, keys) = (
+            &self.notes[start..start + len],
+            &self.keys[start..start + len],
+        );
         match notes {
             [] => Lookup::Missing,
             [note] => Lookup::Found(note),
             _ => {
-                let mut from_root = notes.iter().zip(keys).filter(|(_, other)| other.len() == key.len());
+                let mut from_root = notes
+                    .iter()
+                    .zip(keys)
+                    .filter(|(_, other)| other.len() == key.len());
                 match (from_root.next(), from_root.next()) {
                     (Some((note, _)), None) => Lookup::Found(note),
                     _ => Lookup::Ambiguous(notes),
@@ -94,17 +103,30 @@ impl Vault {
     /// written to the same file.
     pub fn books(&self, property: &str) -> Result<Vec<&Note>> {
         // Already sorted by name, as keys start with it.
-        let hubs: Vec<&Note> = self.notes.iter().filter(|note| note.is_checked(property)).collect();
+        let hubs: Vec<&Note> = self
+            .notes
+            .iter()
+            .filter(|note| note.is_checked(property))
+            .collect();
         let same_name = |a: &&Note, b: &&Note| a.name.to_lowercase() == b.name.to_lowercase();
         if let Some(namesakes) = hubs.chunk_by(same_name).find(|hubs| hubs.len() > 1) {
-            bail!("several books are named {}: {}", namesakes[0].name, display_paths(namesakes.iter().copied()));
+            bail!(
+                "several books are named {}: {}",
+                namesakes[0].name,
+                display_paths(namesakes.iter().copied())
+            );
         }
         Ok(hubs)
     }
 }
 
 fn note_key(note: &Note) -> Key {
-    let folders = note.path.parent().into_iter().flat_map(Path::components).rev();
+    let folders = note
+        .path
+        .parent()
+        .into_iter()
+        .flat_map(Path::components)
+        .rev();
     iter::once(note.name.to_lowercase())
         .chain(folders.map(|folder| folder.as_os_str().to_string_lossy().to_lowercase()))
         .collect()
@@ -117,7 +139,10 @@ fn target_key(target: &str) -> Key {
 /// Lists the paths of `notes` for an error message, sorted so that it doesn't depend on the
 /// order folders are read in: `a/Note.md, b/Note.md`.
 pub fn display_paths<'a>(notes: impl IntoIterator<Item = &'a Note>) -> String {
-    let mut paths: Vec<String> = notes.into_iter().map(|note| note.path.display().to_string()).collect();
+    let mut paths: Vec<String> = notes
+        .into_iter()
+        .map(|note| note.path.display().to_string())
+        .collect();
     paths.sort();
     paths.join(", ")
 }
@@ -156,7 +181,10 @@ mod tests {
             Lookup::Missing => &[],
             Lookup::Ambiguous(notes) => notes,
         };
-        let mut paths: Vec<String> = notes.iter().map(|note| note.path.display().to_string()).collect();
+        let mut paths: Vec<String> = notes
+            .iter()
+            .map(|note| note.path.display().to_string())
+            .collect();
         paths.sort();
         paths
     }
@@ -179,12 +207,19 @@ mod tests {
 
     #[test]
     fn a_path_link_finds_the_notes_whose_path_ends_with_it() {
-        let (_dir, vault) =
-            vault_with(&[("a/Note.md", ""), ("b/Note.md", ""), ("x/a/Note.md", ""), ("folder/Note.md", "")]);
+        let (_dir, vault) = vault_with(&[
+            ("a/Note.md", ""),
+            ("b/Note.md", ""),
+            ("x/a/Note.md", ""),
+            ("folder/Note.md", ""),
+        ]);
         assert_eq!(lookup(&vault, "b/Note"), ["b/Note.md"]);
         assert_eq!(lookup(&vault, "X/A/note"), ["x/a/Note.md"]);
         assert_eq!(lookup(&vault, "a/Note"), ["a/Note.md"]);
-        assert_eq!(lookup(&vault, "Note"), ["a/Note.md", "b/Note.md", "folder/Note.md", "x/a/Note.md"]);
+        assert_eq!(
+            lookup(&vault, "Note"),
+            ["a/Note.md", "b/Note.md", "folder/Note.md", "x/a/Note.md"]
+        );
         // Paths match on whole folder names.
         assert_eq!(lookup(&vault, "older/Note"), [] as [&str; 0]);
         assert_eq!(lookup(&vault, "c/Note"), [] as [&str; 0]);
@@ -200,11 +235,15 @@ mod tests {
 
     #[test]
     fn two_books_sharing_a_name_fail_naming_their_paths() {
-        let (_dir, vault) = vault_with(&[("b/Hub.md", BOOK), ("a/Hub.md", BOOK), ("Other.md", BOOK)]);
+        let (_dir, vault) =
+            vault_with(&[("b/Hub.md", BOOK), ("a/Hub.md", BOOK), ("Other.md", BOOK)]);
         let Err(error) = vault.books("book") else {
             panic!("two books are named Hub");
         };
-        assert_eq!(error.to_string(), "several books are named Hub: a/Hub.md, b/Hub.md");
+        assert_eq!(
+            error.to_string(),
+            "several books are named Hub: a/Hub.md, b/Hub.md"
+        );
     }
 
     #[test]

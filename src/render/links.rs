@@ -28,17 +28,28 @@ struct NotePage {
 impl<'a> BoundNotes<'a> {
     /// No note bound yet, links finding their notes in `vault`.
     pub fn new(vault: &'a Vault) -> Self {
-        BoundNotes { vault, pages: HashMap::new() }
+        BoundNotes {
+            vault,
+            pages: HashMap::new(),
+        }
     }
 
     /// Binds `note` to the page `file`.
     pub fn insert(&mut self, note: &'a Note, file: String) {
-        self.pages.insert(&note.path, NotePage { file, headings: headings::headings(&note.body) });
+        self.pages.insert(
+            &note.path,
+            NotePage {
+                file,
+                headings: headings::headings(&note.body),
+            },
+        );
     }
 
     /// The page of `note`, when it is bound.
     pub fn file(&self, note: &Note) -> Option<&str> {
-        self.pages.get(note.path.as_path()).map(|page| page.file.as_str())
+        self.pages
+            .get(note.path.as_path())
+            .map(|page| page.file.as_str())
     }
 
     /// Where a link to `note`, as written, leads: the note's page, at `heading` when the note
@@ -48,10 +59,12 @@ impl<'a> BoundNotes<'a> {
             return None;
         };
         let page = self.pages.get(note.path.as_path())?;
-        Some(match heading.and_then(|text| headings::find(&page.headings, text)) {
-            Some(heading) => format!("{}#{}", page.file, heading.id),
-            None => page.file.clone(),
-        })
+        Some(
+            match heading.and_then(|text| headings::find(&page.headings, text)) {
+                Some(heading) => format!("{}#{}", page.file, heading.id),
+                None => page.file.clone(),
+            },
+        )
     }
 }
 
@@ -67,8 +80,14 @@ struct Target<'u> {
 impl<'u> Target<'u> {
     fn parse(dest: &'u str) -> Self {
         match dest.split_once('#') {
-            Some((note, subpath)) => Target { note, subpath: Some(subpath) },
-            None => Target { note: dest, subpath: None },
+            Some((note, subpath)) => Target {
+                note,
+                subpath: Some(subpath),
+            },
+            None => Target {
+                note: dest,
+                subpath: None,
+            },
         }
     }
 
@@ -106,17 +125,28 @@ struct OpenLink {
 
 /// Rewrites the wikilinks of `events`: `notes` gives where a link to a note leads, `headings`
 /// are those of the page, which `[[#Heading]]` leads to.
-pub(super) fn rewrite<'a>(events: Vec<Event<'a>>, notes: &BoundNotes, headings: &[Heading]) -> Vec<Event<'a>> {
+pub(super) fn rewrite<'a>(
+    events: Vec<Event<'a>>,
+    notes: &BoundNotes,
+    headings: &[Heading],
+) -> Vec<Event<'a>> {
     let mut out = Vec::with_capacity(events.len());
     // Links don't nest, so only one is open at a time.
     let mut open: Option<OpenLink> = None;
     for event in events {
         match event {
-            Event::Start(Tag::Link { link_type: LinkType::WikiLink { has_pothole }, dest_url, .. }) => {
+            Event::Start(Tag::Link {
+                link_type: LinkType::WikiLink { has_pothole },
+                dest_url,
+                ..
+            }) => {
                 let target = Target::parse(&dest_url);
                 let href = target.href(notes, headings);
                 let text = if has_pothole { None } else { target.text() };
-                open = Some(OpenLink { kept: href.is_some(), text_replaced: text.is_some() });
+                open = Some(OpenLink {
+                    kept: href.is_some(),
+                    text_replaced: text.is_some(),
+                });
                 out.extend(href.map(|href| Event::InlineHtml(CowStr::from(link_opening(&href)))));
                 out.extend(text.map(|text| Event::Text(CowStr::from(text))));
             }
@@ -225,7 +255,10 @@ mod tests {
 
     #[test]
     fn a_link_to_a_block_leads_to_the_page() {
-        assert_eq!(render("See [[In book#^a1b2c3]]."), "<p>See <a href=\"note-1.xhtml\">In book</a>.</p>\n");
+        assert_eq!(
+            render("See [[In book#^a1b2c3]]."),
+            "<p>See <a href=\"note-1.xhtml\">In book</a>.</p>\n"
+        );
     }
 
     #[test]

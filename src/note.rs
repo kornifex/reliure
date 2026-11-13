@@ -104,7 +104,12 @@ mod tests {
 
     #[test]
     fn reads_a_checkbox_and_strips_the_frontmatter() {
-        let note = parse("Hub".into(), "Hub.md".into(), "---\ntype: hub\nbook: true\ndraft: false\n---\nBody\n").unwrap();
+        let note = parse(
+            "Hub".into(),
+            "Hub.md".into(),
+            "---\ntype: hub\nbook: true\ndraft: false\n---\nBody\n",
+        )
+        .unwrap();
         assert!(note.is_checked("book"));
         assert!(!note.is_checked("draft"));
         assert!(!note.is_checked("type"));
@@ -133,7 +138,12 @@ mod tests {
 
     #[test]
     fn a_comment_spanning_lines_is_removed() {
-        let note = parse("Note".into(), "Note.md".into(), "---\nbook: true\n---\nBefore\n%%\nhidden\n- [[A]]\n%%\nAfter\n").unwrap();
+        let note = parse(
+            "Note".into(),
+            "Note.md".into(),
+            "---\nbook: true\n---\nBefore\n%%\nhidden\n- [[A]]\n%%\nAfter\n",
+        )
+        .unwrap();
         assert!(note.is_checked("book"));
         assert_eq!(note.body, "Before\n\nAfter\n");
     }
@@ -141,12 +151,20 @@ mod tests {
     #[test]
     fn percent_signs_in_code_are_kept() {
         let text = "Type `%%x%%` here.\n\n```\n%% kept %%\n```\n";
-        assert_eq!(parse("Note".into(), "Note.md".into(), text).unwrap().body, text);
+        assert_eq!(
+            parse("Note".into(), "Note.md".into(), text).unwrap().body,
+            text
+        );
     }
 
     #[test]
     fn an_unclosed_comment_hides_the_rest_of_the_note() {
-        let note = parse("Note".into(), "Note.md".into(), "Shown %% hidden\n\n`code`\nstill hidden\n").unwrap();
+        let note = parse(
+            "Note".into(),
+            "Note.md".into(),
+            "Shown %% hidden\n\n`code`\nstill hidden\n",
+        )
+        .unwrap();
         assert_eq!(note.body, "Shown ");
     }
 }

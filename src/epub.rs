@@ -16,10 +16,16 @@ const STYLESHEET: &str = include_str!("stylesheet.css");
 /// a page with its text followed by a page per note. Links find their notes in `vault`.
 pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> {
     let mut notes = BoundNotes::new(vault);
-    for (i, note) in book.chapters.iter().flat_map(|chapter| &chapter.notes).enumerate() {
+    for (i, note) in book
+        .chapters
+        .iter()
+        .flat_map(|chapter| &chapter.notes)
+        .enumerate()
+    {
         notes.insert(note, format!("note-{i}.xhtml"));
     }
-    let render_page = |title: &str, markdown: &str| page(title, &to_xhtml(markdown, lang, &notes), lang);
+    let render_page =
+        |title: &str, markdown: &str| page(title, &to_xhtml(markdown, lang, &notes), lang);
 
     let mut epub = EpubBuilder::new(ZipLibrary::new()?)?;
     epub.epub_version(EpubVersion::V30);
@@ -28,14 +34,20 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
     epub.set_toc_name(lang.table_of_contents());
     epub.stylesheet(STYLESHEET.as_bytes())?;
     epub.add_content(
-        EpubContent::new("intro.xhtml", render_page(&book.title, &book.intro).as_bytes())
-            .title(&book.title)
-            .reftype(ReferenceType::Text),
+        EpubContent::new(
+            "intro.xhtml",
+            render_page(&book.title, &book.intro).as_bytes(),
+        )
+        .title(&book.title)
+        .reftype(ReferenceType::Text),
     )?;
     for (i, chapter) in book.chapters.iter().enumerate() {
         epub.add_content(
-            EpubContent::new(format!("chapter-{i}.xhtml"), render_page(&chapter.title, &chapter.text).as_bytes())
-                .title(&chapter.title),
+            EpubContent::new(
+                format!("chapter-{i}.xhtml"),
+                render_page(&chapter.title, &chapter.text).as_bytes(),
+            )
+            .title(&chapter.title),
         )?;
         for note in &chapter.notes {
             // Every note of the chapters was bound above.

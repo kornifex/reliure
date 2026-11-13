@@ -44,7 +44,11 @@ fn main() -> Result<()> {
     let vault = Vault::load(&cli.vault)?;
     let hubs = vault.books(&cli.property)?;
     if hubs.is_empty() {
-        bail!("no note has `{}: true` in {}", cli.property, cli.vault.display());
+        bail!(
+            "no note has `{}: true` in {}",
+            cli.property,
+            cli.vault.display()
+        );
     }
     for hub in hubs {
         let book = book::plan(hub, &vault)?;

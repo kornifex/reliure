@@ -12,8 +12,11 @@ use reqwest::blocking::multipart::Form;
 /// destination folder as the `path` query parameter, and `overwrite=1` to replace an existing
 /// file. Unlike WebDAV, it marks the Library as stale, so the book shows up.
 pub fn upload(host: &str, folder: &str, file: &Path) -> Result<()> {
-    let url = Url::parse_with_params(&format!("http://{host}/upload"), [("path", folder), ("overwrite", "1")])
-        .with_context(|| format!("invalid e-reader host: {host}"))?;
+    let url = Url::parse_with_params(
+        &format!("http://{host}/upload"),
+        [("path", folder), ("overwrite", "1")],
+    )
+    .with_context(|| format!("invalid e-reader host: {host}"))?;
     // CrossPoint saves the file under the multipart file name as sent, so a percent-encoded
     // name ("Book%20one.epub", reqwest's default) would end up on the card.
     let form = Form::new()
@@ -30,7 +33,11 @@ pub fn upload(host: &str, folder: &str, file: &Path) -> Result<()> {
     if !status.is_success() {
         // CrossPoint gives the reason in the body; the status alone still reports the failure.
         let reason = response.text().unwrap_or_default();
-        bail!("{host} refused {}: {status} {}", file.display(), reason.trim());
+        bail!(
+            "{host} refused {}: {status} {}",
+            file.display(),
+            reason.trim()
+        );
     }
     Ok(())
 }
@@ -88,11 +95,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let book = dir.path().join("Book.epub");
         fs::write(&book, "EPUB").unwrap();
-        let (host, server) = fake_reader("400 Bad Request", "A folder with this name already exists: Book.epub");
+        let (host, server) = fake_reader(
+            "400 Bad Request",
+            "A folder with this name already exists: Book.epub",
+        );
 
         let error = upload(&host, "/", &book).unwrap_err().to_string();
 
         server.join().unwrap();
-        assert!(error.contains("400 Bad Request A folder with this name already exists"), "{error}");
+        assert!(
+            error.contains("400 Bad Request A folder with this name already exists"),
+            "{error}"
+        );
     }
 }

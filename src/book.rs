@@ -43,7 +43,8 @@ pub fn plan<'a>(hub: &Note, vault: &'a Vault) -> Result<Book<'a>> {
                 }
                 Lookup::Missing => {}
                 // The hub listing itself binds nothing, even when another note has its name.
-                Lookup::Ambiguous(namesakes) if namesakes.iter().any(|note| note.path == hub.path) => {}
+                Lookup::Ambiguous(namesakes)
+                    if namesakes.iter().any(|note| note.path == hub.path) => {}
                 Lookup::Ambiguous(namesakes) => bail!(
                     "book {} binds [[{target}]], which several notes match: {}",
                     hub.name,
@@ -51,7 +52,11 @@ pub fn plan<'a>(hub: &Note, vault: &'a Vault) -> Result<Book<'a>> {
                 ),
             }
         }
-        chapters.push(Chapter { title, text: text.to_string(), notes });
+        chapters.push(Chapter {
+            title,
+            text: text.to_string(),
+            notes,
+        });
     }
     Ok(Book {
         title: hub.name.clone(),
@@ -74,7 +79,10 @@ fn split_sections(body: &str) -> (&str, Vec<(String, &str)>) {
     let mut heading_start = 0;
     for (event, range) in Parser::new(body).into_offset_iter() {
         match event {
-            Event::Start(Tag::Heading { level: HeadingLevel::H2, .. }) => {
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                ..
+            }) => {
                 heading_start = range.start;
                 title = Some(String::new());
             }
@@ -96,7 +104,9 @@ fn split_sections(body: &str) -> (&str, Vec<(String, &str)>) {
         .iter()
         .enumerate()
         .map(|(i, (title, _, text_start))| {
-            let text_end = headings.get(i + 1).map_or(body.len(), |&(_, start, _)| start);
+            let text_end = headings
+                .get(i + 1)
+                .map_or(body.len(), |&(_, start, _)| start);
             (title.clone(), &body[*text_start..text_end])
         })
         .collect();
@@ -111,9 +121,11 @@ fn listed_notes(markdown: &str) -> Vec<String> {
         match event {
             Event::Start(Tag::Item) => at_item_start = true,
             Event::Start(Tag::Paragraph | Tag::Strong | Tag::Emphasis) => {}
-            Event::Start(Tag::Link { link_type: LinkType::WikiLink { .. }, dest_url, .. })
-                if at_item_start =>
-            {
+            Event::Start(Tag::Link {
+                link_type: LinkType::WikiLink { .. },
+                dest_url,
+                ..
+            }) if at_item_start => {
                 notes.push(note_name(&dest_url).to_string());
                 at_item_start = false;
             }
@@ -139,20 +151,33 @@ mod tests {
     }
 
     fn names<'a>(chapter: &Chapter<'a>) -> Vec<&'a str> {
-        chapter.notes.iter().map(|note| note.name.as_str()).collect()
+        chapter
+            .notes
+            .iter()
+            .map(|note| note.name.as_str())
+            .collect()
     }
 
     fn paths<'a>(chapter: &Chapter<'a>) -> Vec<&'a Path> {
-        chapter.notes.iter().map(|note| note.path.as_path()).collect()
+        chapter
+            .notes
+            .iter()
+            .map(|note| note.path.as_path())
+            .collect()
     }
 
     #[test]
     fn sections_become_chapters_listing_their_notes() {
-        let hub = hub("Intro\n\n## Design\n- **[[A]]** : a\n- [[B|bee]]\n\n## Table\n- **[[C]]** : c\n");
+        let hub =
+            hub("Intro\n\n## Design\n- **[[A]]** : a\n- [[B|bee]]\n\n## Table\n- **[[C]]** : c\n");
         let vault = vault(&["A.md", "B.md", "C.md"]);
         let book = plan(&hub, &vault).unwrap();
         assert_eq!(book.intro, "Intro\n\n");
-        let chapters: Vec<_> = book.chapters.iter().map(|c| (c.title.as_str(), names(c))).collect();
+        let chapters: Vec<_> = book
+            .chapters
+            .iter()
+            .map(|c| (c.title.as_str(), names(c)))
+            .collect();
         assert_eq!(chapters, [("Design", vec!["A", "B"]), ("Table", vec!["C"])]);
         assert_eq!(book.chapters[1].text, "- **[[C]]** : c\n");
     }
@@ -167,7 +192,8 @@ mod tests {
 
     #[test]
     fn links_inside_text_and_missing_notes_stay_references() {
-        let hub = hub("## Words\n- **Clue**: leads to a [[Revelation]].\n- [[Missing]]\n- [[A#Part]]\n");
+        let hub =
+            hub("## Words\n- **Clue**: leads to a [[Revelation]].\n- [[Missing]]\n- [[A#Part]]\n");
         let vault = vault(&["A.md", "Revelation.md"]);
         let book = plan(&hub, &vault).unwrap();
         assert_eq!(names(&book.chapters[0]), ["A"]);
@@ -180,7 +206,10 @@ mod tests {
         let Err(error) = plan(&hub, &vault) else {
             panic!("A is ambiguous");
         };
-        assert_eq!(error.to_string(), "book Hub binds [[A]], which several notes match: one/A.md, two/A.md");
+        assert_eq!(
+            error.to_string(),
+            "book Hub binds [[A]], which several notes match: one/A.md, two/A.md"
+        );
     }
 
     #[test]
@@ -214,7 +243,10 @@ mod tests {
         let Err(error) = plan(&hub, &vault) else {
             panic!("x/A is ambiguous");
         };
-        assert_eq!(error.to_string(), "book Hub binds [[x/A]], which several notes match: one/x/A.md, two/x/A.md");
+        assert_eq!(
+            error.to_string(),
+            "book Hub binds [[x/A]], which several notes match: one/x/A.md, two/x/A.md"
+        );
     }
 
     #[test]
@@ -236,7 +268,12 @@ mod tests {
 
     #[test]
     fn a_hub_whose_list_item_is_commented_out_binds_nothing() {
-        let hub = crate::note::parse("Hub".into(), "Hub.md".into(), "## Design\n%%\n- [[A]]\n%%\n- %%[[B]]%%\n").unwrap();
+        let hub = crate::note::parse(
+            "Hub".into(),
+            "Hub.md".into(),
+            "## Design\n%%\n- [[A]]\n%%\n- %%[[B]]%%\n",
+        )
+        .unwrap();
         let vault = vault(&["A.md", "B.md"]);
         let book = plan(&hub, &vault).unwrap();
         assert!(book.chapters[0].notes.is_empty());
