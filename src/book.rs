@@ -6,6 +6,7 @@ use anyhow::{Result, bail};
 use pulldown_cmark::{Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd};
 
 use crate::note::Note;
+use crate::render::is_size;
 use crate::vault::{Lookup, Vault, display_paths};
 
 pub struct Book<'a> {
@@ -77,12 +78,38 @@ pub fn note_name(target: &str) -> &str {
 
 /// Splits a body at its `##` headings: the text before the first one, then each heading's
 /// title with the text up to the next one.
+///
+/// A title is the heading's text, links showing their text, embeds the text after their `|`
+/// unless it is a size, or the name of what they embed.
 fn split_sections(body: &str) -> (&str, Vec<(String, &str)>) {
     let mut headings = Vec::new();
     let mut title: Option<String> = None;
+    // Inside an embed of a title: the name of what it embeds, and its text after `|`, if any.
+    let mut embed: Option<(String, Option<String>)> = None;
     let mut heading_start = 0;
-    for (event, range) in Parser::new(body).into_offset_iter() {
+    for (event, range) in Parser::new_ext(body, Options::ENABLE_WIKILINKS).into_offset_iter() {
         match event {
+            Event::Start(Tag::Image {
+                link_type: LinkType::WikiLink { has_pothole },
+                dest_url,
+                ..
+            }) if title.is_some() => {
+                let target = note_name(&dest_url);
+                let name = target.rsplit_once('/').map_or(target, |(_, name)| name);
+                embed = Some((name.to_string(), has_pothole.then(String::new)));
+            }
+            Event::End(TagEnd::Image) => {
+                if let (Some((name, alias)), Some(title)) = (embed.take(), title.as_mut()) {
+                    let alias = alias.as_deref().map(str::trim);
+                    let shown = alias.filter(|alias| !alias.is_empty() && !is_size(alias));
+                    title.push_str(shown.unwrap_or(&name));
+                }
+            }
+            Event::Text(text) | Event::Code(text) if embed.is_some() => {
+                if let Some((_, Some(alias))) = embed.as_mut() {
+                    alias.push_str(&text);
+                }
+            }
             Event::Start(Tag::Heading {
                 level: HeadingLevel::H2,
                 ..
@@ -184,6 +211,19 @@ mod tests {
             .collect();
         assert_eq!(chapters, [("Design", vec!["A", "B"]), ("Table", vec!["C"])]);
         assert_eq!(book.chapters[1].text, "- **[[C]]** : c\n");
+    }
+
+    #[test]
+    fn an_embed_in_a_chapter_heading_shows_its_alt_or_its_name() {
+        let hub = hub(
+            "## Gallery ![[maps/a_b.png]], ![[x.png|The map]], ![[y.png|300]] and ![[Folder/Note#Part]]\n",
+        );
+        let vault = vault(&[]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(
+            book.chapters[0].title,
+            "Gallery a_b.png, The map, y.png and Note"
+        );
     }
 
     #[test]

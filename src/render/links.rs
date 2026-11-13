@@ -198,7 +198,9 @@ mod tests {
             };
             notes.insert(note, file.into());
         }
-        to_xhtml(markdown, Path::new("Page.md"), Lang::En, &notes).unwrap()
+        to_xhtml(markdown, Path::new("Page.md"), Lang::En, &notes)
+            .unwrap()
+            .xhtml
     }
 
     #[test]

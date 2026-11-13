@@ -5,6 +5,7 @@
 mod callouts;
 mod embeds;
 mod headings;
+mod images;
 mod links;
 mod tables;
 
@@ -16,33 +17,48 @@ use pulldown_cmark_escape::escape_html;
 
 use crate::lang::Lang;
 
+pub use images::{Image, is_size};
 pub use links::BoundNotes;
 
+/// A note body rendered for a page of a book.
+pub struct Rendered<'v> {
+    /// The XHTML fragment.
+    pub xhtml: String,
+    /// The images its `<img>` tags point to, each once, which the book must hold.
+    pub images: Vec<Image<'v>>,
+}
+
 /// Renders an Obsidian note body, the text of the note at `page` in the vault, to an XHTML
-/// fragment.
+/// fragment, telling the images it shows.
 ///
 /// Each heading gets an id derived from its text. `![[Note]]` puts the body of a note of the
 /// vault in place, `![[Note#Heading]]` the section under that heading; the note at `page`
-/// stays a reference, as do the notes embedding the embed. `notes` gives where a
-/// `[[link]]` to a note of the book leads, and `[[#Heading]]` leads to a heading of the body
+/// stays a reference, as do the notes embedding the embed. `![[photo.png]]` shows an image of
+/// the vault, and any other attachment, or a missing one, shows its name. `notes` gives where
+/// a `[[link]]` to a note of the book leads, and `[[#Heading]]` leads to a heading of the body
 /// itself; a link to a note outside the book keeps its text and loses its link. Callouts
 /// become framed blocks headed by their title, or by their kind's name in `lang`; untitled
 /// quotes stay plain blockquotes. Tables of 5 columns or more become one block per row.
 ///
-/// Fails when an embed matches several notes of the vault.
-pub fn to_xhtml(markdown: &str, page: &Path, lang: Lang, notes: &BoundNotes) -> Result<String> {
+/// Fails when an embed matches several notes, or several attachments, of the vault.
+pub fn to_xhtml<'v>(
+    markdown: &str,
+    page: &Path,
+    lang: Lang,
+    notes: &BoundNotes<'v>,
+) -> Result<Rendered<'v>> {
     let headings = headings::headings(markdown);
     let events: Vec<Event> = parse(markdown).collect();
     // First, so that only the body's own headings get an id: the headings of the notes the
     // embeds pass puts in place right after it come from other bodies.
     let events = headings::add_ids(events, &headings);
-    let events = embeds::rewrite(events, page, notes.vault())?;
+    let (events, images) = embeds::rewrite(events, page, notes.vault())?;
     let events = links::rewrite(events, notes, &headings);
     let events = callouts::rewrite(events, lang);
     let events = tables::rewrite(events);
     let mut xhtml = String::new();
     html::push_html(&mut xhtml, events.into_iter());
-    Ok(xhtml)
+    Ok(Rendered { xhtml, images })
 }
 
 /// `text` escaped for XHTML, as text or as an attribute value.

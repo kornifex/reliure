@@ -58,7 +58,7 @@ The essentials of running a game, from the blog posts I read this year.
 This hub becomes a book titled after the hub, with:
 
 - an opening page with the text before the first `##` heading;
-- one chapter per `##` section. The chapter opens with the section's text, so the hub's list works as the chapter's table of contents;
+- one chapter per `##` section, titled after its heading. An embed in the heading shows in the title as its text after `|` (`![[map.png|The map]]`), or as the name of what it embeds (`map.png`). The chapter opens with the section's text, so the hub's list works as the chapter's table of contents;
 - the notes of a chapter after it, one page each. A note enters the book when a list item **starts** with a link to it, bold or italic allowed: here *Three clue rule*, *Node-based design* and *Pacing*. A link inside a sentence, like *Three clue rule* in the *Pacing* item, is a reference and adds nothing;
 - each note bound once, under the first chapter that lists it: the last item of *At the table* adds nothing either.
 
@@ -66,11 +66,12 @@ In the pages:
 
 - `[[links]]` to a note of the book lead to its page, and `[[Note#Heading]]` or `[[#Heading]]` to that heading, shown as `Note > Heading` or `Heading` as in Obsidian's reading view. A link to a heading the note doesn't have, or to a block (`[[Note#^block]]`), leads to the note's page. Links to notes outside the book keep their text and lose the link;
 - `![[Note]]` puts the note's body in place, without its properties, and `![[Note#Heading]]` the section under that heading, up to the next heading of the same or a higher level; `![[Note#^block]]` puts the whole note. The embedded note's links work as the page's own, and embeds nest. Embedding a note doesn't bind it, even in a hub's list. An embed of a note missing from the vault, of a heading it doesn't have, of the page's own note or of a note already being embedded higher up, or written in a heading, a table cell or emphasis, renders as `[[Note]]` would;
+- `![[photo.png]]` shows the image where it is written, inside a sentence, a heading, a table cell or a list item. The book holds the file as it is, once however many pages show it. A size (`![[photo.png|300]]` or `|300x200`) is ignored, as readers fit images to their screen; other text after `|` is the image's alternative text, its file name otherwise. JPEG, PNG, GIF, WebP and SVG images are copied: CrossPoint displays JPEG, PNG and GIF only, and shows `[Image: alt]` for the others. An image missing from the vault, or another attachment (PDF, audio, video, `.base`), shows its name;
 - callouts become framed blocks headed by their title, or by their kind (`[!tip]` gives "Tip", or "Astuce" with `--lang fr`). An untitled `[!quote]` stays a plain quote;
 - tables of 5 columns or more, too wide for a small screen, become one block per row: the row's first cell as a bold title, then one `Header: value` line per other column, empty cells left out. Narrower tables stay tables;
 - note properties (the YAML frontmatter) and comments (`%%…%%`) are left out.
 
-reliure finds notes as Obsidian links do: by name, whatever the case (`[[pacing]]` finds `Pacing.md`), or by the end of their path when several files share a name (`[[Rules/Pacing]]` finds `Rules/Pacing.md`, not `Drafts/Pacing.md`). A path from the vault's root wins over deeper ones, as in Obsidian: `[[Pacing]]` finds `Pacing.md` at the root before `Drafts/Pacing.md`. When a book binds or embeds a link that several notes match, reliure stops and lists their paths rather than guess; names no book binds may repeat, like a `README` in each folder. Two books can't share a name either, even in a different case, as they would be written to the same file. Hidden folders (`.obsidian`, `.trash`) are skipped.
+reliure finds notes as Obsidian links do: by name, whatever the case (`[[pacing]]` finds `Pacing.md`), or by the end of their path when several files share a name (`[[Rules/Pacing]]` finds `Rules/Pacing.md`, not `Drafts/Pacing.md`). A path from the vault's root wins over deeper ones, as in Obsidian: `[[Pacing]]` finds `Pacing.md` at the root before `Drafts/Pacing.md`. Attachments are found the same way, by their file name with its extension (`![[map.png]]`, `![[Maps/map.png]]`). When a book binds or embeds a link that several notes or attachments match, reliure stops and lists their paths rather than guess; names no book binds may repeat, like a `README` in each folder. Two books can't share a name either, even in a different case, as they would be written to the same file. Hidden folders (`.obsidian`, `.trash`) are skipped.
 
 ## Getting the books on a reader
 
@@ -86,7 +87,7 @@ Use the IP address shown on the reader's screen if `crosspoint.local` doesn't re
 
 ## Limits
 
-Not handled yet: embedded images and other attachments (`![[photo.png]]` shows its name), highlights (`==…==`) and footnotes.
+Not handled yet: attachments other than images (`![[file.pdf]]` shows its name), images written as Markdown links (`![alt](photo.png)`), highlights (`==…==`) and footnotes.
 
 ## Development
 

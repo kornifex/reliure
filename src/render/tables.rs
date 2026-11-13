@@ -99,7 +99,9 @@ mod tests {
     }
 
     fn render_in(markdown: &str, notes: &BoundNotes) -> String {
-        to_xhtml(markdown, Path::new("Page.md"), Lang::En, notes).unwrap()
+        to_xhtml(markdown, Path::new("Page.md"), Lang::En, notes)
+            .unwrap()
+            .xhtml
     }
 
     #[test]

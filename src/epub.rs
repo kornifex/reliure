@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::path::Path;
 
@@ -12,10 +13,11 @@ use crate::vault::Vault;
 const STYLESHEET: &str = include_str!("stylesheet.css");
 
 /// Writes `book` as an EPUB file at `path`, one page for the intro, then for each chapter
-/// a page with its text followed by a page per note. Links and embeds find their notes in
-/// `vault`.
+/// a page with its text followed by a page per note, then the images the pages show, once
+/// each. Links and embeds find their notes and attachments in `vault`.
 ///
-/// Fails when a page embeds a name several notes match, naming the page.
+/// Fails when a page embeds a name several notes or attachments match, naming the page, or
+/// when an image can't be read.
 pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> {
     let mut notes = BoundNotes::new(vault);
     for (i, note) in book
@@ -26,11 +28,14 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
     {
         notes.insert(note, format!("note-{i}.xhtml"));
     }
+    // The images of the pages, page after page: several pages may show the same one.
+    let mut images = Vec::new();
     // `source` is the path of the note whose text `markdown` is.
-    let render_page = |title: &str, source: &Path, markdown: &str| -> Result<String> {
-        let body = to_xhtml(markdown, source, lang, &notes)
+    let mut render_page = |title: &str, source: &Path, markdown: &str| -> Result<String> {
+        let rendered = to_xhtml(markdown, source, lang, &notes)
             .with_context(|| format!("in the page {title}"))?;
-        Ok(page(title, &body, lang))
+        images.extend(rendered.images);
+        Ok(page(title, &rendered.xhtml, lang))
     };
 
     let mut epub = EpubBuilder::new(ZipLibrary::new()?)?;
@@ -67,6 +72,13 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
                 .title(&note.name)
                 .level(2),
             )?;
+        }
+    }
+    let mut added = HashSet::new();
+    for image in &images {
+        if added.insert(&image.attachment.path) {
+            let content = vault.read(image.attachment)?;
+            epub.add_resource(&image.file, content.as_slice(), image.media_type)?;
         }
     }
 

@@ -10,6 +10,7 @@ use crate::lang::Lang;
 struct Callout {
     /// Lowercased: Obsidian ignores the case of `[!TIP]`.
     kind: String,
+    /// As the header line has it: XHTML, when `read_header` puts the line together.
     title: Option<String>,
 }
 
@@ -87,7 +88,7 @@ pub(super) fn rewrite(events: Vec<Event<'_>>, lang: Lang) -> Vec<Event<'_>> {
                 if stays_quote {
                     out.push(events[i].clone());
                 } else {
-                    let title = title.unwrap_or_else(|| default_title(&kind, lang));
+                    let title = title.unwrap_or_else(|| escaped(&default_title(&kind, lang)));
                     out.push(Event::Html(callout_opening(&kind, &title).into()));
                 }
                 open_quotes.push(!stays_quote);
@@ -121,10 +122,11 @@ struct Header {
     paragraph_continues: bool,
 }
 
-/// Reads a callout header from the events following a blockquote's start.
+/// Reads a callout header from the events following a blockquote's start, its title as XHTML.
 ///
 /// pulldown-cmark splits a line into several Text events (at `[`, `!`, `]`), so the header is
-/// put back together up to the first line break.
+/// put back together up to the first line break. The `<img/>` of an image the embeds pass put
+/// there stays in the title.
 fn read_header(events: &[Event<'_>]) -> Option<Header> {
     let [Event::Start(Tag::Paragraph), rest @ ..] = events else {
         return None;
@@ -132,7 +134,10 @@ fn read_header(events: &[Event<'_>]) -> Option<Header> {
     let mut line = String::new();
     for (n, event) in rest.iter().enumerate() {
         match event {
-            Event::Text(text) => line.push_str(text),
+            Event::Text(text) => line.push_str(&escaped(text)),
+            Event::InlineHtml(html) if html.starts_with("<img ") && html.ends_with("/>") => {
+                line.push_str(html);
+            }
             Event::SoftBreak | Event::HardBreak | Event::End(TagEnd::Paragraph) => {
                 return parse_callout(&line).map(|callout| Header {
                     callout,
@@ -146,8 +151,7 @@ fn read_header(events: &[Event<'_>]) -> Option<Header> {
     None
 }
 
-fn callout_opening(kind: &str, title: &str) -> String {
-    let title_xhtml = escaped(title);
+fn callout_opening(kind: &str, title_xhtml: &str) -> String {
     format!(
         "<div class=\"callout callout-{kind}\">\n<p class=\"callout-title\"><strong>{title_xhtml}</strong></p>\n"
     )
@@ -159,10 +163,11 @@ mod tests {
 
     use super::*;
     use crate::render::{BoundNotes, to_xhtml};
-    use crate::vault::Vault;
+    use crate::vault::{Attachment, Vault};
 
+    /// Renders `markdown` in a vault holding the image `maps/a_b.png`.
     fn render(markdown: &str, lang: Lang) -> String {
-        let vault = Vault::default();
+        let vault = Vault::default().with_attachments([Attachment::at("maps/a_b.png")]);
         to_xhtml(
             markdown,
             Path::new("Page.md"),
@@ -170,6 +175,7 @@ mod tests {
             &BoundNotes::new(&vault),
         )
         .unwrap()
+        .xhtml
     }
 
     #[test]
@@ -197,6 +203,16 @@ mod tests {
         assert_eq!(
             render("> [!example] Le loup-garou\n> Trois façons.\n", Lang::Fr),
             "<div class=\"callout callout-example\">\n<p class=\"callout-title\"><strong>Le loup-garou</strong></p>\n<p>Trois façons.</p>\n</div>\n"
+        );
+    }
+
+    #[test]
+    fn an_image_in_a_callout_title_stays_in_it() {
+        assert_eq!(
+            render("> [!note] ![[a_b.png]] Map & key\n> Text.\n", Lang::En),
+            "<div class=\"callout callout-note\">\n<p class=\"callout-title\"><strong>\
+             <img src=\"images/60b30a5a-a_b.png\" alt=\"a_b.png\"/> Map &amp; key</strong></p>\n\
+             <p>Text.</p>\n</div>\n"
         );
     }
 

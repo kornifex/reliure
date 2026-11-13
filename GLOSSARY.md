@@ -30,4 +30,4 @@ A `![[…]]` that puts a note's content, or an attachment, in place where it is 
 _Avoid_: transclusion, include
 
 **Attachment**:
-A file of the vault that is not a note, such as an image, found by its name like notes are.
+A file of the vault that is not a note, such as an image, found by its file name with its extension (`photo.png`) like notes are by theirs. A book holds a copy of the images its pages embed.

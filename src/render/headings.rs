@@ -132,6 +132,7 @@ mod tests {
             &BoundNotes::new(&vault),
         )
         .unwrap()
+        .xhtml
     }
 
     #[test]

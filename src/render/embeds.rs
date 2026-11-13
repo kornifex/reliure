@@ -3,7 +3,10 @@
 //!
 //! An embed stays a reference, a wikilink the links pass reads, when its note is missing or
 //! already being embedded higher up, or when it is written where blocks can't go: in a
-//! heading, a table cell, or emphasis. An attachment shows its name until books hold them.
+//! heading, a table cell, or emphasis.
+//!
+//! `![[photo.png]]` shows an image, inline wherever it is written. Any other attachment, or a
+//! missing one, shows its name.
 use std::mem;
 use std::path::{Path, PathBuf};
 
@@ -11,23 +14,28 @@ use anyhow::{Context, Result, bail};
 use pulldown_cmark::{CowStr, Event, LinkType, Tag, TagEnd};
 
 use super::headings;
+use super::images::{self, Image};
 use crate::note::Note;
 use crate::vault::{Lookup, Vault, display_paths};
 
 /// The embeds pass: replaces the embeds of `events`, the page of the note at `page`, with the
-/// content of the notes of `vault` they designate.
+/// content of the notes of `vault` they designate, or with the images they show. Gives the
+/// images too, each once, in the order they first show.
 ///
-/// Fails when an embed matches several notes, naming the embedded notes it is in.
-pub(super) fn rewrite<'a>(
+/// Fails when an embed matches several notes or attachments, naming the embedded notes it is
+/// in.
+pub(super) fn rewrite<'a, 'v: 'a>(
     events: Vec<Event<'a>>,
     page: &'a Path,
-    vault: &'a Vault,
-) -> Result<Vec<Event<'a>>> {
-    Embedder {
+    vault: &'v Vault,
+) -> Result<(Vec<Event<'a>>, Vec<Image<'v>>)> {
+    let mut embedder = Embedder {
         vault,
         embedding: vec![page],
-    }
-    .rewrite(events)
+        images: Vec::new(),
+    };
+    let events = embedder.rewrite(events)?;
+    Ok((events, embedder.images))
 }
 
 /// A `![[…]]` as written, which pulldown-cmark reads as an image.
@@ -81,25 +89,44 @@ impl<'a> Embed<'a> {
         events.push(Event::End(TagEnd::Link));
         events
     }
+
+    /// The text alternative of an image written after `|`, unless it is a size.
+    fn alt(&self) -> Option<String> {
+        if !self.has_pothole {
+            return None;
+        }
+        let text: String = self
+            .text
+            .iter()
+            .filter_map(|event| match event {
+                Event::Text(text) | Event::Code(text) => Some(text.as_ref()),
+                _ => None,
+            })
+            .collect();
+        let text = text.trim();
+        (!text.is_empty() && !images::is_size(text)).then(|| text.to_string())
+    }
 }
 
 /// What an embed becomes.
 enum Placed<'a> {
     /// The blocks of a note or of a section, which no paragraph may hold.
     Blocks(Vec<Event<'a>>),
-    /// Inline events: a reference, or an attachment's name.
+    /// Inline events: a reference, an image, or an attachment's name.
     Inline(Vec<Event<'a>>),
 }
 
-/// Replaces embeds with the content of their notes, recursively.
-struct Embedder<'a> {
-    vault: &'a Vault,
+/// Replaces embeds with the content of their notes, recursively, and with their images.
+struct Embedder<'a, 'v> {
+    vault: &'v Vault,
     /// The paths of the notes being embedded, starting with the page's own: embedding one of
     /// them again would never end.
     embedding: Vec<&'a Path>,
+    /// The images shown so far, each once.
+    images: Vec<Image<'v>>,
 }
 
-impl<'a> Embedder<'a> {
+impl<'a, 'v: 'a> Embedder<'a, 'v> {
     /// Replaces the embeds of `events`.
     fn rewrite(&mut self, events: Vec<Event<'a>>) -> Result<Vec<Event<'a>>> {
         let mut out = Vec::with_capacity(events.len());
@@ -183,9 +210,7 @@ impl<'a> Embedder<'a> {
         };
         let note = match self.vault.get(&target) {
             Lookup::Found(note) => note,
-            Lookup::Missing if is_attachment(&target) => {
-                return Ok(Placed::Inline(vec![Event::Text(target.into())]));
-            }
+            Lookup::Missing if is_attachment(&target) => return self.attachment(&embed, target),
             Lookup::Missing => return Ok(Placed::Inline(embed.into_reference())),
             Lookup::Ambiguous(notes) => bail!(
                 "cannot embed ![[{}]], which several notes match: {}",
@@ -210,6 +235,33 @@ impl<'a> Embedder<'a> {
         let blocks =
             blocks.with_context(|| format!("in the embedded note {}", note.path.display()))?;
         Ok(Placed::Blocks(blocks))
+    }
+
+    /// What `embed` of the attachment `target` becomes: an `<img>` when it is an image of the
+    /// vault, its name otherwise.
+    fn attachment(&mut self, embed: &Embed<'a>, target: String) -> Result<Placed<'a>> {
+        let image = match self.vault.attachment(&target) {
+            Lookup::Found(attachment) => Image::new(attachment),
+            Lookup::Missing => None,
+            Lookup::Ambiguous(attachments) => bail!(
+                "cannot embed ![[{}]], which several attachments match: {}",
+                embed.dest_url,
+                display_paths(attachments)
+            ),
+        };
+        let Some(image) = image else {
+            return Ok(Placed::Inline(vec![Event::Text(target.into())]));
+        };
+        let alt = embed.alt().unwrap_or_else(|| image.attachment.name.clone());
+        let tag = image.tag(&alt);
+        if !self
+            .images
+            .iter()
+            .any(|shown| shown.attachment.path == image.attachment.path)
+        {
+            self.images.push(image);
+        }
+        Ok(Placed::Inline(vec![Event::InlineHtml(tag.into())]))
     }
 }
 
@@ -332,14 +384,21 @@ mod tests {
     use crate::lang::Lang;
     use crate::note::Note;
     use crate::render::{BoundNotes, to_xhtml};
-    use crate::vault::{Lookup, Vault};
+    use crate::vault::{Attachment, Lookup, Vault};
 
     const LOOP_A: &str = "A text.\n\n![[Loop B]]\n";
     const SELFIE: &str = "Me.\n\n![[Selfie]]\n";
+    const PHOTO: &str = "<img src=\"images/0ec41df3-Photo.PNG\" alt=\"Photo.PNG\"/>";
 
     /// Renders `markdown` as the page of the note at `page`, in a book binding "Loop A" and
     /// "folder/Guide"; the other notes are only in the vault.
     fn try_render_in(page: &str, markdown: &str) -> anyhow::Result<String> {
+        render_with_images(page, markdown).map(|(xhtml, _)| xhtml)
+    }
+
+    /// Renders `markdown` as `try_render_in` does, with the files in the book of the images the
+    /// page shows.
+    fn render_with_images(page: &str, markdown: &str) -> anyhow::Result<(String, Vec<String>)> {
         let vault = Vault::from_notes([
             Note::at("Aside.md", "Aside text.\n"),
             Note::at("Empty.md", ""),
@@ -358,6 +417,16 @@ mod tests {
             Note::at("Uses twin.md", "![[Twin]]\n"),
             Note::at("one/Twin.md", ""),
             Note::at("two/Twin.md", ""),
+            Note::at("Gallery.md", "![[photo.png]]\n\n![[one/Map.png]]\n"),
+        ])
+        .with_attachments([
+            Attachment::at("maps/Photo.PNG"),
+            Attachment::at("one/Map.png"),
+            Attachment::at("two/Map.png"),
+            Attachment::at("Été/Plan 1.png"),
+            Attachment::at("docs/File.pdf"),
+            Attachment::at("sounds/Theme.mp3"),
+            Attachment::at("Tasks.base"),
         ]);
         let mut notes = BoundNotes::new(&vault);
         for (target, file) in [("Loop A", "note-0.xhtml"), ("Guide", "note-1.xhtml")] {
@@ -366,7 +435,9 @@ mod tests {
             };
             notes.insert(note, file.into());
         }
-        to_xhtml(markdown, Path::new(page), Lang::En, &notes)
+        let rendered = to_xhtml(markdown, Path::new(page), Lang::En, &notes)?;
+        let images = rendered.images.iter().map(|image| image.file.clone());
+        Ok((rendered.xhtml, images.collect()))
     }
 
     /// Renders `markdown` as the page of a note that is not in the vault.
@@ -540,10 +611,92 @@ mod tests {
     }
 
     #[test]
-    fn an_attachment_shows_its_name() {
+    fn an_image_shows_in_its_sentence_under_the_exact_name_of_its_file() {
         assert_eq!(
-            render("![[photo.png|300]] and ![[docs/File.pdf]]\n"),
-            "<p>photo.png and docs/File.pdf</p>\n"
+            render("See ![[photo.png]] here.\n"),
+            format!("<p>See {PHOTO} here.</p>\n")
+        );
+    }
+
+    #[test]
+    fn a_size_is_ignored_and_other_text_is_the_alt() {
+        assert_eq!(
+            render("![[photo.png|300]] ![[photo.png|300x200]] ![[photo.png|The \"old\" map]]\n"),
+            format!(
+                "<p>{PHOTO} {PHOTO} \
+                 <img src=\"images/0ec41df3-Photo.PNG\" alt=\"The &quot;old&quot; map\"/></p>\n"
+            )
+        );
+    }
+
+    #[test]
+    fn an_image_goes_in_a_heading_a_table_cell_emphasis_or_a_list_item() {
+        assert_eq!(
+            render(
+                "## ![[photo.png]] Map\n\n| A | B |\n|---|---|\n| ![[photo.png]] | x |\n\n\
+                 *![[photo.png]]*\n\n- ![[photo.png]]\n"
+            ),
+            format!(
+                "<h2 id=\"photopng-map\">{PHOTO} Map</h2>\n\
+                 <table><thead><tr><th>A</th><th>B</th></tr></thead><tbody>\n\
+                 <tr><td>{PHOTO}</td><td>x</td></tr>\n</tbody></table>\n\
+                 <p><em>{PHOTO}</em></p>\n<ul>\n<li>{PHOTO}</li>\n</ul>\n"
+            )
+        );
+    }
+
+    #[test]
+    fn images_sharing_a_name_in_different_folders_stay_apart() {
+        assert_eq!(
+            render("![[one/Map.png]] ![[two/Map.png]]\n"),
+            "<p><img src=\"images/a10d2e75-Map.png\" alt=\"Map.png\"/> \
+             <img src=\"images/91a17244-Map.png\" alt=\"Map.png\"/></p>\n"
+        );
+    }
+
+    #[test]
+    fn an_image_file_in_the_book_has_a_name_safe_for_a_url() {
+        assert_eq!(
+            render("![[Plan 1.png]]\n"),
+            "<p><img src=\"images/44414ae0-Plan_1.png\" alt=\"Plan 1.png\"/></p>\n"
+        );
+    }
+
+    #[test]
+    fn an_embed_several_attachments_match_fails_naming_their_paths() {
+        let error = try_render("![[Map.png]]\n").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "cannot embed ![[Map.png]], which several attachments match: one/Map.png, two/Map.png"
+        );
+    }
+
+    #[test]
+    fn a_missing_image_or_another_attachment_shows_its_name() {
+        assert_eq!(
+            render("![[missing.png|300]] and ![[docs/File.pdf]] and ![[File.pdf|doc]]\n"),
+            "<p>missing.png and docs/File.pdf and File.pdf</p>\n"
+        );
+    }
+
+    #[test]
+    fn an_audio_file_or_a_base_shows_its_name_and_is_no_image() {
+        let (xhtml, images) =
+            render_with_images("Page.md", "![[Theme.mp3]] and ![[tasks.base|Tasks]]\n").unwrap();
+        assert_eq!(xhtml, "<p>Theme.mp3 and tasks.base</p>\n");
+        assert!(images.is_empty(), "{images:?}");
+    }
+
+    #[test]
+    fn a_page_tells_each_image_it_shows_once() {
+        let (_, images) = render_with_images(
+            "Page.md",
+            "![[photo.png]] ![[missing.png]] ![[File.pdf]]\n\n![[Gallery]]\n\n![[PHOTO.png|alt]]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            images,
+            ["images/0ec41df3-Photo.PNG", "images/a10d2e75-Map.png"]
         );
     }
 }
