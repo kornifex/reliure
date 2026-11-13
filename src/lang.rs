@@ -15,4 +15,11 @@ impl Lang {
             Lang::Fr => "fr",
         }
     }
+
+    pub fn table_of_contents(self) -> &'static str {
+        match self {
+            Lang::En => "Contents",
+            Lang::Fr => "Table des matières",
+        }
+    }
 }

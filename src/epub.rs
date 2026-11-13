@@ -30,6 +30,7 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
     epub.epub_version(EpubVersion::V30);
     epub.set_title(&book.title);
     epub.set_languages(vec![lang.tag().into()]);
+    epub.set_toc_name(lang.table_of_contents());
     epub.stylesheet(STYLESHEET.as_bytes())?;
     epub.add_content(
         EpubContent::new("intro.xhtml", render_page(&book.title, &book.intro).as_bytes())
