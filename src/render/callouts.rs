@@ -155,9 +155,22 @@ fn callout_opening(kind: &str, title: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
     use crate::render::{BoundNotes, to_xhtml};
     use crate::vault::Vault;
+
+    fn render(markdown: &str, lang: Lang) -> String {
+        let vault = Vault::default();
+        to_xhtml(
+            markdown,
+            Path::new("Page.md"),
+            lang,
+            &BoundNotes::new(&vault),
+        )
+        .unwrap()
+    }
 
     #[test]
     fn reads_a_callout_header() {
@@ -182,11 +195,7 @@ mod tests {
     #[test]
     fn a_callout_becomes_a_titled_block() {
         assert_eq!(
-            to_xhtml(
-                "> [!example] Le loup-garou\n> Trois façons.\n",
-                Lang::Fr,
-                &BoundNotes::new(&Vault::default())
-            ),
+            render("> [!example] Le loup-garou\n> Trois façons.\n", Lang::Fr),
             "<div class=\"callout callout-example\">\n<p class=\"callout-title\"><strong>Le loup-garou</strong></p>\n<p>Trois façons.</p>\n</div>\n"
         );
     }
@@ -194,11 +203,7 @@ mod tests {
     #[test]
     fn a_callout_without_title_takes_its_kind_heading() {
         assert_eq!(
-            to_xhtml(
-                "> [!WARNING]\n> - point\n",
-                Lang::En,
-                &BoundNotes::new(&Vault::default())
-            ),
+            render("> [!WARNING]\n> - point\n", Lang::En),
             "<div class=\"callout callout-warning\">\n<p class=\"callout-title\"><strong>Warning</strong></p>\n<ul>\n<li>point</li>\n</ul>\n</div>\n"
         );
     }
@@ -212,11 +217,7 @@ mod tests {
     #[test]
     fn a_quote_callout_stays_a_blockquote() {
         assert_eq!(
-            to_xhtml(
-                "> [!quote]\n> \"Three clues.\"\n",
-                Lang::En,
-                &BoundNotes::new(&Vault::default())
-            ),
+            render("> [!quote]\n> \"Three clues.\"\n", Lang::En),
             "<blockquote>\n<p>\"Three clues.\"</p>\n</blockquote>\n"
         );
     }
@@ -224,11 +225,7 @@ mod tests {
     #[test]
     fn a_titled_quote_callout_closes_as_a_block() {
         assert_eq!(
-            to_xhtml(
-                "> [!quote] Alexander\n> Text.\n",
-                Lang::En,
-                &BoundNotes::new(&Vault::default())
-            ),
+            render("> [!quote] Alexander\n> Text.\n", Lang::En),
             "<div class=\"callout callout-quote\">\n<p class=\"callout-title\"><strong>Alexander</strong></p>\n<p>Text.</p>\n</div>\n"
         );
     }
@@ -236,11 +233,7 @@ mod tests {
     #[test]
     fn a_plain_blockquote_is_left_alone() {
         assert_eq!(
-            to_xhtml(
-                "> Just a quote.\n",
-                Lang::En,
-                &BoundNotes::new(&Vault::default())
-            ),
+            render("> Just a quote.\n", Lang::En),
             "<blockquote>\n<p>Just a quote.</p>\n</blockquote>\n"
         );
     }

@@ -45,6 +45,11 @@ impl<'a> BoundNotes<'a> {
         );
     }
 
+    /// The vault links and embeds find their notes in.
+    pub(super) fn vault(&self) -> &'a Vault {
+        self.vault
+    }
+
     /// The page of `note`, when it is bound.
     pub fn file(&self, note: &Note) -> Option<&str> {
         self.pages
@@ -170,6 +175,8 @@ fn link_opening(href: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use crate::lang::Lang;
     use crate::note::Note;
     use crate::render::{BoundNotes, to_xhtml};
@@ -191,7 +198,7 @@ mod tests {
             };
             notes.insert(note, file.into());
         }
-        to_xhtml(markdown, Lang::En, &notes)
+        to_xhtml(markdown, Path::new("Page.md"), Lang::En, &notes).unwrap()
     }
 
     #[test]

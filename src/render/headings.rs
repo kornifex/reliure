@@ -6,27 +6,12 @@ use pulldown_cmark::{CowStr, Event, HeadingLevel, Tag, TagEnd};
 
 /// A heading of a note body.
 pub(super) struct Heading {
-    // Only tests read it until then.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "read by section embeds, to find where a section ends"
-        )
-    )]
     pub(super) level: HeadingLevel,
     /// Its text, without its markup.
     pub(super) text: String,
     /// Its id in the page: its text lowercased, words joined by `-`, unique within the body.
     pub(super) id: String,
     /// Where it is written in the body, from its `#` to the end of its line.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "read by section embeds, to cut a section out of the body"
-        )
-    )]
     pub(super) range: Range<usize>,
 }
 
@@ -131,13 +116,22 @@ fn unique_id(slug: String, before: &[Heading]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
     use crate::lang::Lang;
     use crate::render::{BoundNotes, to_xhtml};
     use crate::vault::Vault;
 
     fn render(markdown: &str) -> String {
-        to_xhtml(markdown, Lang::Fr, &BoundNotes::new(&Vault::default()))
+        let vault = Vault::default();
+        to_xhtml(
+            markdown,
+            Path::new("Page.md"),
+            Lang::Fr,
+            &BoundNotes::new(&vault),
+        )
+        .unwrap()
     }
 
     #[test]

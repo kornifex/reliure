@@ -1,5 +1,6 @@
 //! The plan of a book, read from its hub.
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 use pulldown_cmark::{Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd};
@@ -9,6 +10,8 @@ use crate::vault::{Lookup, Vault, display_paths};
 
 pub struct Book<'a> {
     pub title: String,
+    /// The hub's path in the vault, whose text the intro and the chapters are.
+    pub hub: PathBuf,
     /// The hub's text before its first `##` heading.
     pub intro: String,
     pub chapters: Vec<Chapter<'a>>,
@@ -60,6 +63,7 @@ pub fn plan<'a>(hub: &Note, vault: &'a Vault) -> Result<Book<'a>> {
     }
     Ok(Book {
         title: hub.name.clone(),
+        hub: hub.path.clone(),
         intro: intro.to_string(),
         chapters,
     })
@@ -264,6 +268,14 @@ mod tests {
         let vault = vault(&["Hub.md", "other/Hub.md", "A.md"]);
         let book = plan(&hub, &vault).unwrap();
         assert_eq!(names(&book.chapters[0]), ["A"]);
+    }
+
+    #[test]
+    fn a_note_embedded_in_a_hub_is_not_bound() {
+        let hub = hub("## Design\n- ![[A]]\n- **![[B]]**\n- [[C]]\n");
+        let vault = vault(&["A.md", "B.md", "C.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[0]), ["C"]);
     }
 
     #[test]

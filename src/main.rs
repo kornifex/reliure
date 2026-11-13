@@ -8,7 +8,7 @@ mod vault;
 
 use std::path::PathBuf;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 
 use crate::lang::Lang;
@@ -53,7 +53,8 @@ fn main() -> Result<()> {
     for hub in hubs {
         let book = book::plan(hub, &vault)?;
         let path = cli.out.join(format!("{}.epub", hub.name));
-        epub::write(&book, &vault, cli.lang, &path)?;
+        epub::write(&book, &vault, cli.lang, &path)
+            .with_context(|| format!("cannot write the book {}", hub.name))?;
         println!("{}", path.display());
         if let Some(host) = &cli.send {
             crosspoint::upload(host, &cli.folder, &path)?;

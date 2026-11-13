@@ -65,11 +65,12 @@ This hub becomes a book titled after the hub, with:
 In the pages:
 
 - `[[links]]` to a note of the book lead to its page, and `[[Note#Heading]]` or `[[#Heading]]` to that heading, shown as `Note > Heading` or `Heading` as in Obsidian's reading view. A link to a heading the note doesn't have, or to a block (`[[Note#^block]]`), leads to the note's page. Links to notes outside the book keep their text and lose the link;
+- `![[Note]]` puts the note's body in place, without its properties, and `![[Note#Heading]]` the section under that heading, up to the next heading of the same or a higher level; `![[Note#^block]]` puts the whole note. The embedded note's links work as the page's own, and embeds nest. Embedding a note doesn't bind it, even in a hub's list. An embed of a note missing from the vault, of a heading it doesn't have, of the page's own note or of a note already being embedded higher up, or written in a heading, a table cell or emphasis, renders as `[[Note]]` would;
 - callouts become framed blocks headed by their title, or by their kind (`[!tip]` gives "Tip", or "Astuce" with `--lang fr`). An untitled `[!quote]` stays a plain quote;
 - tables of 5 columns or more, too wide for a small screen, become one block per row: the row's first cell as a bold title, then one `Header: value` line per other column, empty cells left out. Narrower tables stay tables;
 - note properties (the YAML frontmatter) and comments (`%%…%%`) are left out.
 
-reliure finds notes as Obsidian links do: by name, whatever the case (`[[pacing]]` finds `Pacing.md`), or by the end of their path when several files share a name (`[[Rules/Pacing]]` finds `Rules/Pacing.md`, not `Drafts/Pacing.md`). A path from the vault's root wins over deeper ones, as in Obsidian: `[[Pacing]]` finds `Pacing.md` at the root before `Drafts/Pacing.md`. When a book binds a link that several notes match, reliure stops and lists their paths rather than guess; names no book binds may repeat, like a `README` in each folder. Two books can't share a name either, even in a different case, as they would be written to the same file. Hidden folders (`.obsidian`, `.trash`) are skipped.
+reliure finds notes as Obsidian links do: by name, whatever the case (`[[pacing]]` finds `Pacing.md`), or by the end of their path when several files share a name (`[[Rules/Pacing]]` finds `Rules/Pacing.md`, not `Drafts/Pacing.md`). A path from the vault's root wins over deeper ones, as in Obsidian: `[[Pacing]]` finds `Pacing.md` at the root before `Drafts/Pacing.md`. When a book binds or embeds a link that several notes match, reliure stops and lists their paths rather than guess; names no book binds may repeat, like a `README` in each folder. Two books can't share a name either, even in a different case, as they would be written to the same file. Hidden folders (`.obsidian`, `.trash`) are skipped.
 
 ## Getting the books on a reader
 
@@ -85,7 +86,7 @@ Use the IP address shown on the reader's screen if `crosspoint.local` doesn't re
 
 ## Limits
 
-Not handled yet: embedded images and notes (`![[…]]`), highlights (`==…==`) and footnotes.
+Not handled yet: embedded images and other attachments (`![[photo.png]]` shows its name), highlights (`==…==`) and footnotes.
 
 ## Development
 

@@ -12,7 +12,10 @@ use crate::vault::Vault;
 const STYLESHEET: &str = include_str!("stylesheet.css");
 
 /// Writes `book` as an EPUB file at `path`, one page for the intro, then for each chapter
-/// a page with its text followed by a page per note. Links find their notes in `vault`.
+/// a page with its text followed by a page per note. Links and embeds find their notes in
+/// `vault`.
+///
+/// Fails when a page embeds a name several notes match, naming the page.
 pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> {
     let mut notes = BoundNotes::new(vault);
     for (i, note) in book
@@ -23,8 +26,12 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
     {
         notes.insert(note, format!("note-{i}.xhtml"));
     }
-    let render_page =
-        |title: &str, markdown: &str| page(title, &to_xhtml(markdown, lang, &notes), lang);
+    // `source` is the path of the note whose text `markdown` is.
+    let render_page = |title: &str, source: &Path, markdown: &str| -> Result<String> {
+        let body = to_xhtml(markdown, source, lang, &notes)
+            .with_context(|| format!("in the page {title}"))?;
+        Ok(page(title, &body, lang))
+    };
 
     let mut epub = EpubBuilder::new(ZipLibrary::new()?)?;
     epub.epub_version(EpubVersion::V30);
@@ -35,7 +42,7 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
     epub.add_content(
         EpubContent::new(
             "intro.xhtml",
-            render_page(&book.title, &book.intro).as_bytes(),
+            render_page(&book.title, &book.hub, &book.intro)?.as_bytes(),
         )
         .title(&book.title)
         .reftype(ReferenceType::Text),
@@ -44,7 +51,7 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
         epub.add_content(
             EpubContent::new(
                 format!("chapter-{i}.xhtml"),
-                render_page(&chapter.title, &chapter.text).as_bytes(),
+                render_page(&chapter.title, &book.hub, &chapter.text)?.as_bytes(),
             )
             .title(&chapter.title),
         )?;
@@ -53,9 +60,12 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
                 .file(note)
                 .expect("every note of the chapters was bound above");
             epub.add_content(
-                EpubContent::new(file, render_page(&note.name, &note.body).as_bytes())
-                    .title(&note.name)
-                    .level(2),
+                EpubContent::new(
+                    file,
+                    render_page(&note.name, &note.path, &note.body)?.as_bytes(),
+                )
+                .title(&note.name)
+                .level(2),
             )?;
         }
     }

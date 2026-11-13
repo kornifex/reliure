@@ -7,26 +7,32 @@ use std::process::{Command, Output};
 use tempfile::TempDir;
 use zip::ZipArchive;
 
-/// A vault with a hub binding two notes, the first one linking to the second.
-fn vault() -> TempDir {
+/// A vault holding `files`, as (path under the vault, text) pairs.
+fn vault_with(files: &[(&str, &str)]) -> TempDir {
     let vault = tempfile::tempdir().unwrap();
-    let write = |path: &str, text: &str| {
+    for (path, text) in files {
         let path = vault.path().join(path);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
-    };
-    write(
-        "Hub.md",
-        "---\nbook: true\n---\nOpening.\n\n## Design\n- **[[Clues]]**: three of them.\n- [[Pacing]]\n",
-    );
-    write(
-        "notes/Clues.md",
-        "See [[Pacing#Scenes]].\n\n> [!tip]\n> Plan three.\n",
-    );
-    write("notes/Pacing.md", "## Scenes\nShort ones.\n");
-    // Hidden folders are skipped: this hub would make a second book.
-    write(".trash/Old hub.md", "---\nbook: true\n---\n");
+    }
     vault
+}
+
+/// A vault with a hub binding two notes, the first one linking to the second.
+fn vault() -> TempDir {
+    vault_with(&[
+        (
+            "Hub.md",
+            "---\nbook: true\n---\nOpening.\n\n## Design\n- **[[Clues]]**: three of them.\n- [[Pacing]]\n",
+        ),
+        (
+            "notes/Clues.md",
+            "See [[Pacing#Scenes]].\n\n> [!tip]\n> Plan three.\n",
+        ),
+        ("notes/Pacing.md", "## Scenes\nShort ones.\n"),
+        // Hidden folders are skipped: this hub would make a second book.
+        (".trash/Old hub.md", "---\nbook: true\n---\n"),
+    ])
 }
 
 /// Runs reliure on `vault`, writing the books into `out`, with more options in `args`.
@@ -76,6 +82,60 @@ fn binds_a_hub_into_a_book() {
     );
     assert!(clues.contains("<strong>Astuce</strong>"), "{clues}");
     assert!(read(&epub, "OEBPS/note-1.xhtml").contains("<h2 id=\"scenes\">Scenes</h2>"));
+}
+
+#[test]
+fn embeds_a_note_without_binding_it() {
+    let vault = vault_with(&[
+        (
+            "Hub.md",
+            "---\nbook: true\n---\n## Design\n![[Aside]]\n\n- [[Clues]]\n- ![[Aside]]\n- [[Pacing]]\n",
+        ),
+        ("Clues.md", "Three of them.\n\n![[Aside]]\n"),
+        ("Aside.md", "---\ntags: [aside]\n---\nRead [[Pacing]].\n"),
+        ("Pacing.md", "Short scenes.\n"),
+    ]);
+    let out = tempfile::tempdir().unwrap();
+
+    let output = reliure(vault.path(), out.path(), &[]);
+
+    assert!(output.status.success(), "{output:?}");
+    let epub = out.path().join("Hub.epub");
+    let clues = read(&epub, "OEBPS/note-0.xhtml");
+    assert!(
+        clues.contains("<p>Three of them.</p>\n<p>Read <a href=\"note-1.xhtml\">Pacing</a>.</p>"),
+        "{clues}"
+    );
+    assert!(!clues.contains("tags"), "{clues}");
+    let chapter = read(&epub, "OEBPS/chapter-0.xhtml");
+    assert!(
+        chapter.contains("<h1>Design</h1>\n<p>Read <a href=\"note-1.xhtml\">Pacing</a>.</p>"),
+        "{chapter}"
+    );
+    let mut archive = ZipArchive::new(File::open(&epub).unwrap()).unwrap();
+    assert!(archive.by_name("OEBPS/note-2.xhtml").is_err());
+}
+
+#[test]
+fn an_ambiguous_embed_fails_naming_the_book_and_the_page() {
+    let vault = vault_with(&[
+        ("Hub.md", "---\nbook: true\n---\n## Design\n- [[Pacing]]\n"),
+        ("Pacing.md", "Short scenes.\n\n![[Twin]]\n"),
+        ("one/Twin.md", ""),
+        ("two/Twin.md", ""),
+    ]);
+    let out = tempfile::tempdir().unwrap();
+
+    let output = reliure(vault.path(), out.path(), &[]);
+
+    assert!(!output.status.success());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        error.contains(
+            "cannot write the book Hub\n\nCaused by:\n    0: in the page Pacing\n    1: cannot embed ![[Twin]], which several notes match: one/Twin.md, two/Twin.md"
+        ),
+        "{error}"
+    );
 }
 
 #[test]
