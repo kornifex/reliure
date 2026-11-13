@@ -51,9 +51,15 @@ impl Vault {
             }
             let text = fs::read_to_string(path)
                 .with_context(|| format!("cannot read {}", path.display()))?;
-            // A .md path always has a file stem, and the walk only yields paths under `root`.
-            let name = path.file_stem().unwrap().to_string_lossy().into_owned();
-            let relative = path.strip_prefix(root).unwrap().to_path_buf();
+            let name = path
+                .file_stem()
+                .expect("a .md path has a file stem")
+                .to_string_lossy()
+                .into_owned();
+            let relative = path
+                .strip_prefix(root)
+                .expect("the walk only yields paths under `root`")
+                .to_path_buf();
             notes.push(note::parse(name, relative, &text)?);
         }
         Ok(Vault::from_notes(notes))

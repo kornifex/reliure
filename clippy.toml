@@ -1,0 +1,3 @@
+allow-unwrap-in-tests = true
+# Product names, not code: no backticks in the docs. `..` keeps clippy's default list.
+doc-valid-idents = ["CrossPoint", "WebDAV", ".."]

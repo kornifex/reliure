@@ -3,11 +3,10 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use epub_builder::{EpubBuilder, EpubContent, EpubVersion, ReferenceType, ZipLibrary};
-use pulldown_cmark_escape::escape_html;
 
 use crate::book::Book;
 use crate::lang::Lang;
-use crate::render::{BoundNotes, to_xhtml};
+use crate::render::{BoundNotes, escaped, to_xhtml};
 use crate::vault::Vault;
 
 const STYLESHEET: &str = include_str!("stylesheet.css");
@@ -50,8 +49,9 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
             .title(&chapter.title),
         )?;
         for note in &chapter.notes {
-            // Every note of the chapters was bound above.
-            let file = notes.file(note).unwrap();
+            let file = notes
+                .file(note)
+                .expect("every note of the chapters was bound above");
             epub.add_content(
                 EpubContent::new(file, render_page(&note.name, &note.body).as_bytes())
                     .title(&note.name)
@@ -67,9 +67,7 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
 
 /// An XHTML page titled `title`, around a body fragment.
 fn page(title: &str, body: &str, lang: Lang) -> String {
-    let mut title_xhtml = String::new();
-    // Writing into a String cannot fail.
-    escape_html(&mut title_xhtml, title).unwrap();
+    let title_xhtml = escaped(title);
     let tag = lang.tag();
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>

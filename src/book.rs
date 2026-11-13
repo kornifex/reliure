@@ -87,8 +87,8 @@ fn split_sections(body: &str) -> (&str, Vec<(String, &str)>) {
                 title = Some(String::new());
             }
             Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
-                // Set by the matching Start event.
-                headings.push((title.take().unwrap(), heading_start, range.end));
+                let title = title.take().expect("set by the matching Start event");
+                headings.push((title, heading_start, range.end));
             }
             Event::Text(text) | Event::Code(text) => {
                 if let Some(title) = title.as_mut() {

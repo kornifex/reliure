@@ -8,6 +8,7 @@ mod links;
 mod tables;
 
 use pulldown_cmark::{Event, Options, Parser, html};
+use pulldown_cmark_escape::escape_html;
 
 use crate::lang::Lang;
 
@@ -31,6 +32,13 @@ pub fn to_xhtml(markdown: &str, lang: Lang, notes: &BoundNotes) -> String {
     let events = tables::rewrite(events);
     let mut xhtml = String::new();
     html::push_html(&mut xhtml, events.into_iter());
+    xhtml
+}
+
+/// `text` escaped for XHTML, as text or as an attribute value.
+pub fn escaped(text: &str) -> String {
+    let mut xhtml = String::new();
+    escape_html(&mut xhtml, text).expect("writing into a String cannot fail");
     xhtml
 }
 

@@ -1,8 +1,8 @@
 //! The callouts pass: Obsidian callouts become framed blocks headed by their title, or by their
 //! kind's name in the book's language; untitled quote callouts stay plain blockquotes.
 use pulldown_cmark::{Event, Tag, TagEnd};
-use pulldown_cmark_escape::escape_html;
 
+use super::escaped;
 use crate::lang::Lang;
 
 /// The header of an Obsidian callout, the first line of its blockquote: `[!warning] Pièges`.
@@ -64,6 +64,10 @@ fn capitalize(word: &str) -> String {
 
 /// Turns the blockquotes that open with a callout header into `div.callout` blocks with their
 /// title, and strips the header off untitled quote callouts, which stay blockquotes.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "every pass takes the events and gives them back, so the pipeline reads as a chain"
+)]
 pub(super) fn rewrite(events: Vec<Event<'_>>, lang: Lang) -> Vec<Event<'_>> {
     let mut out = Vec::with_capacity(events.len());
     // One entry per open blockquote: whether it closes as a callout div.
@@ -143,9 +147,7 @@ fn read_header(events: &[Event<'_>]) -> Option<Header> {
 }
 
 fn callout_opening(kind: &str, title: &str) -> String {
-    let mut title_xhtml = String::new();
-    // Writing into a String cannot fail.
-    escape_html(&mut title_xhtml, title).unwrap();
+    let title_xhtml = escaped(title);
     format!(
         "<div class=\"callout callout-{kind}\">\n<p class=\"callout-title\"><strong>{title_xhtml}</strong></p>\n"
     )

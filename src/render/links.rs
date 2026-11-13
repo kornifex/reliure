@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use pulldown_cmark::{CowStr, Event, LinkType, Tag, TagEnd};
-use pulldown_cmark_escape::escape_html;
 
+use super::escaped;
 use super::headings::{self, Heading};
 use crate::note::Note;
 use crate::vault::{Lookup, Vault};
@@ -165,10 +165,7 @@ pub(super) fn rewrite<'a>(
 /// The `<a>` tag of a link to `href`, written as HTML: pulldown-cmark would percent-encode the
 /// accents of a heading's id in the href, and CrossPoint compares it to the ids as written.
 fn link_opening(href: &str) -> String {
-    let mut href_xhtml = String::new();
-    // Writing into a String cannot fail.
-    escape_html(&mut href_xhtml, href).unwrap();
-    format!("<a href=\"{href_xhtml}\">")
+    format!("<a href=\"{}\">", escaped(href))
 }
 
 #[cfg(test)]

@@ -6,9 +6,13 @@ use pulldown_cmark::{CowStr, Event, HeadingLevel, Tag, TagEnd};
 
 /// A heading of a note body.
 pub(super) struct Heading {
-    #[allow(
-        dead_code,
-        reason = "read by section embeds, to find where a section ends"
+    // Only tests read it until then.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "read by section embeds, to find where a section ends"
+        )
     )]
     pub(super) level: HeadingLevel,
     /// Its text, without its markup.
@@ -16,9 +20,12 @@ pub(super) struct Heading {
     /// Its id in the page: its text lowercased, words joined by `-`, unique within the body.
     pub(super) id: String,
     /// Where it is written in the body, from its `#` to the end of its line.
-    #[allow(
-        dead_code,
-        reason = "read by section embeds, to cut a section out of the body"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "read by section embeds, to cut a section out of the body"
+        )
     )]
     pub(super) range: Range<usize>,
 }
@@ -39,8 +46,7 @@ pub(super) fn headings(markdown: &str) -> Vec<Heading> {
                 }
             }
             Event::End(TagEnd::Heading(_)) => {
-                // Set by the matching Start event.
-                let (level, range, text) = open.take().unwrap();
+                let (level, range, text) = open.take().expect("set by the matching Start event");
                 let id = unique_id(slug(&text), &headings);
                 headings.push(Heading {
                     level,
@@ -117,11 +123,10 @@ fn unique_id(slug: String, before: &[Heading]) -> String {
     if !taken(&slug) {
         return slug;
     }
-    // Only a finite number of ids are taken.
-    (1..)
+    (1..=before.len())
         .map(|n| format!("{slug}-{n}"))
         .find(|id| !taken(id))
-        .unwrap()
+        .expect("the bare slug takes one id of `before`, so the others can't take all of these")
 }
 
 #[cfg(test)]

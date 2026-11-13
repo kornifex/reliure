@@ -20,5 +20,16 @@ reqwest = { version = "0.13.5", default-features = false, features = ["blocking"
 serde_yaml_ng = "0.10.0"
 walkdir = "2.5.0"
 
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# An invariant is spelled out in `expect`, where it shows if it ever breaks.
+unwrap_used = "warn"
+# `#[expect]` rather than `#[allow]`: it warns once the lint it silences no longer fires.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+
 [dev-dependencies]
 tempfile = "3.27.0"
