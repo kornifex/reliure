@@ -1,0 +1,41 @@
+# cargo deny check: known vulnerabilities, licenses, duplicate crates and crate sources.
+
+[advisories]
+# Vulnerabilities and unmaintained crates from the RustSec database fail the check. Each ignored
+# advisory says why reliure isn't exposed; drop it once the dependency moves past it.
+ignore = [
+    # zip 6, through epub-builder: flaws in extracting archives, while reliure only writes them.
+    # Fixed in zip 9, which epub-builder 0.8 doesn't allow.
+    { id = "RUSTSEC-2026-0367", reason = "reliure never extracts a zip archive" },
+    { id = "RUSTSEC-2026-0368", reason = "reliure never extracts a zip archive" },
+    { id = "RUSTSEC-2026-0369", reason = "reliure never extracts a zip archive" },
+    { id = "RUSTSEC-2026-0429", reason = "reliure never extracts a zip archive" },
+    # time, through zip: the RFC 2822 parser sits behind the `parsing` feature, which nothing
+    # enables. The fix, time 0.3.47, needs Rust 1.88, past reliure's MSRV.
+    { id = "RUSTSEC-2026-0009", reason = "time's parsing feature is off" },
+    # unsafe-libyaml, through serde_yaml_ng: unmaintained, no known flaw.
+    { id = "RUSTSEC-2024-0449", reason = "no maintained YAML parser chosen yet" },
+]
+
+[licenses]
+# The licenses the dependencies may use, compatible with distributing reliure under MIT.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    # epub-builder: copyleft on its own files only, which reliure uses unchanged.
+    "MPL-2.0",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
