@@ -88,11 +88,7 @@ fn push_strong<'a>(out: &mut Vec<Event<'a>>, content: impl IntoIterator<Item = E
 #[cfg(test)]
 mod tests {
     use crate::lang::Lang;
-    use crate::render::to_xhtml;
-
-    fn no_links(_: &str) -> Option<String> {
-        None
-    }
+    use crate::render::{BoundNotes, to_xhtml};
 
     #[test]
     fn a_wide_table_becomes_one_block_per_row() {
@@ -103,7 +99,7 @@ mod tests {
 | Brom | Fighter | 5 | Axe | Strong |
 ";
         assert_eq!(
-            to_xhtml(markdown, Lang::En, no_links),
+            to_xhtml(markdown, Lang::En, &BoundNotes::default()),
             "<div class=\"table-row\">\n\
              <p class=\"table-row-title\"><strong>Aria</strong></p>\n\
              <p><strong>Class:</strong> Rogue</p>\n\
@@ -129,7 +125,7 @@ mod tests {
 | Aria | Rogue | 3 | Dagger |
 ";
         assert_eq!(
-            to_xhtml(markdown, Lang::En, no_links),
+            to_xhtml(markdown, Lang::En, &BoundNotes::default()),
             "<table><thead><tr><th>Name</th><th>Class</th><th>Level</th><th>Weapon</th></tr></thead>\
              <tbody>\n<tr><td>Aria</td><td>Rogue</td><td>3</td><td>Dagger</td></tr>\n</tbody></table>\n"
         );
@@ -145,7 +141,7 @@ mod tests {
 |  |  | | | |
 ";
         assert_eq!(
-            to_xhtml(markdown, Lang::En, no_links),
+            to_xhtml(markdown, Lang::En, &BoundNotes::default()),
             "<div class=\"table-row\">\n\
              <p class=\"table-row-title\"><strong>Aria</strong></p>\n\
              <p><strong>Level:</strong> 3</p>\n\
@@ -164,9 +160,10 @@ mod tests {
 |---|---|---|---|---|
 | *Aria* | [[Rogue]] | `3` | [Dagger](https://example.com) | **Quick** |
 ";
-        let href_of = |name: &str| (name == "Rogue").then(|| "note-2.xhtml".to_string());
+        let mut notes = BoundNotes::default();
+        notes.insert("Rogue", "note-2.xhtml".into(), "");
         assert_eq!(
-            to_xhtml(markdown, Lang::En, href_of),
+            to_xhtml(markdown, Lang::En, &notes),
             "<div class=\"table-row\">\n\
              <p class=\"table-row-title\"><strong><em>Aria</em></strong></p>\n\
              <p><strong>Class:</strong> <a href=\"note-2.xhtml\">Rogue</a></p>\n\
@@ -185,7 +182,7 @@ mod tests {
 | Aria | Rogue | 3 | Dagger | Quick |
 ";
         assert_eq!(
-            to_xhtml(markdown, Lang::En, no_links),
+            to_xhtml(markdown, Lang::En, &BoundNotes::default()),
             "<div class=\"table-row\">\n\
              <p class=\"table-row-title\"><strong>Aria</strong></p>\n\
              <p><strong><em>Class</em>:</strong> Rogue</p>\n\
@@ -206,7 +203,7 @@ mod tests {
 After.
 ";
         assert_eq!(
-            to_xhtml(markdown, Lang::En, no_links),
+            to_xhtml(markdown, Lang::En, &BoundNotes::default()),
             "<div class=\"table-row\">\n\
              <p class=\"table-row-title\"><strong>Aria</strong></p>\n\
              <p><strong>Class:</strong> Rogue</p>\n\

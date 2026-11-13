@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
@@ -8,7 +7,7 @@ use pulldown_cmark_escape::escape_html;
 
 use crate::book::Book;
 use crate::lang::Lang;
-use crate::render::to_xhtml;
+use crate::render::{BoundNotes, to_xhtml};
 use crate::vault::Vault;
 
 const STYLESHEET: &str = include_str!("stylesheet.css");
@@ -16,15 +15,12 @@ const STYLESHEET: &str = include_str!("stylesheet.css");
 /// Writes `book` as an EPUB file at `path`, one page for the intro, then for each chapter
 /// a page with its text followed by a page per note.
 pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> {
-    let note_pages: HashMap<&str, String> = book
-        .chapters
-        .iter()
-        .flat_map(|chapter| &chapter.notes)
-        .enumerate()
-        .map(|(i, name)| (name.as_str(), format!("note-{i}.xhtml")))
-        .collect();
-    let href_of = |name: &str| note_pages.get(name).cloned();
-    let render_page = |title: &str, markdown: &str| page(title, &to_xhtml(markdown, lang, href_of), lang);
+    let mut notes = BoundNotes::default();
+    for (i, name) in book.chapters.iter().flat_map(|chapter| &chapter.notes).enumerate() {
+        // The plan only lists notes found in the vault.
+        notes.insert(name, format!("note-{i}.xhtml"), &vault.get(name).unwrap().body);
+    }
+    let render_page = |title: &str, markdown: &str| page(title, &to_xhtml(markdown, lang, &notes), lang);
 
     let mut epub = EpubBuilder::new(ZipLibrary::new()?)?;
     epub.epub_version(EpubVersion::V30);
@@ -43,10 +39,11 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
                 .title(&chapter.title),
         )?;
         for name in &chapter.notes {
-            // The plan only lists notes found in the vault.
+            // Both found above: the note in the vault, its page among the bound notes.
             let note = vault.get(name).unwrap();
+            let file = notes.file(name).unwrap();
             epub.add_content(
-                EpubContent::new(&note_pages[name.as_str()], render_page(name, &note.body).as_bytes())
+                EpubContent::new(file, render_page(name, &note.body).as_bytes())
                     .title(name)
                     .level(2),
             )?;
