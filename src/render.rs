@@ -1,0 +1,246 @@
+use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
+use pulldown_cmark_escape::escape_html;
+
+use crate::book::note_name;
+
+/// Renders an Obsidian note body to an XHTML fragment.
+///
+/// `href_of` gives the target of a `[[link]]` inside the book, from the linked note's name;
+/// a link to a note outside the book keeps its text and loses its link. Callouts become
+/// framed blocks headed by their title, except quotes, which stay plain blockquotes.
+pub fn to_xhtml(markdown: &str, href_of: impl Fn(&str) -> Option<String>) -> String {
+    let options = Options::ENABLE_WIKILINKS
+        | Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS;
+    // Links don't nest, so one flag pairs a dropped link's End with its Start.
+    let mut dropping_link = false;
+    let events: Vec<Event> = Parser::new_ext(markdown, options)
+        .filter_map(|event| match event {
+            Event::Start(Tag::Link { link_type: LinkType::WikiLink { .. }, dest_url, .. }) => {
+                match href_of(note_name(&dest_url)) {
+                    Some(href) => Some(Event::Start(Tag::Link {
+                        link_type: LinkType::Inline,
+                        dest_url: CowStr::from(href),
+                        title: CowStr::from(""),
+                        id: CowStr::from(""),
+                    })),
+                    None => {
+                        dropping_link = true;
+                        None
+                    }
+                }
+            }
+            Event::End(TagEnd::Link) if dropping_link => {
+                dropping_link = false;
+                None
+            }
+            other => Some(other),
+        })
+        .collect();
+    let mut xhtml = String::new();
+    html::push_html(&mut xhtml, rewrite_callouts(events).into_iter());
+    xhtml
+}
+
+/// The header of an Obsidian callout, the first line of its blockquote: `[!warning] Pièges`.
+#[derive(Debug, PartialEq)]
+struct Callout {
+    /// Lowercased: Obsidian ignores the case of `[!TIP]`.
+    kind: String,
+    title: Option<String>,
+}
+
+/// Reads a callout header: `[!kind]`, an optional fold marker (`+` or `-`), then an optional title.
+fn parse_callout(line: &str) -> Option<Callout> {
+    let (kind, after) = line.trim_start().strip_prefix("[!")?.split_once(']')?;
+    if kind.is_empty() || !kind.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return None;
+    }
+    let title = after.trim_start_matches(['+', '-']).trim();
+    Some(Callout {
+        kind: kind.to_ascii_lowercase(),
+        title: (!title.is_empty()).then(|| title.to_string()),
+    })
+}
+
+/// The heading Obsidian shows for a callout without a title, in French.
+fn default_title(kind: &str) -> String {
+    let label = match kind {
+        "abstract" | "summary" | "tldr" => "En bref",
+        "info" => "Info",
+        "tip" | "hint" => "Astuce",
+        "important" => "Important",
+        "warning" | "caution" | "attention" => "Attention",
+        "danger" | "error" => "Danger",
+        "example" => "Exemple",
+        "question" | "help" | "faq" => "Question",
+        "success" | "check" | "done" => "Réussi",
+        "failure" | "fail" | "missing" => "Échec",
+        "todo" => "À faire",
+        "bug" => "Bug",
+        _ => "Note",
+    };
+    label.to_string()
+}
+
+/// Turns the blockquotes that open with a callout header into `div.callout` blocks with their
+/// title, and strips the header off untitled quote callouts, which stay blockquotes.
+fn rewrite_callouts(events: Vec<Event<'_>>) -> Vec<Event<'_>> {
+    let mut out = Vec::with_capacity(events.len());
+    // One entry per open blockquote: whether it closes as a callout div.
+    let mut open_quotes: Vec<bool> = Vec::new();
+    let mut i = 0;
+    while i < events.len() {
+        match &events[i] {
+            Event::Start(Tag::BlockQuote(_)) => {
+                let Some(header) = read_header(&events[i + 1..]) else {
+                    open_quotes.push(false);
+                    out.push(events[i].clone());
+                    i += 1;
+                    continue;
+                };
+                let Callout { kind, title } = header.callout;
+                let stays_quote = matches!(kind.as_str(), "quote" | "cite") && title.is_none();
+                if stays_quote {
+                    out.push(events[i].clone());
+                } else {
+                    let title = title.unwrap_or_else(|| default_title(&kind));
+                    out.push(Event::Html(callout_opening(&kind, &title).into()));
+                }
+                open_quotes.push(!stays_quote);
+                if header.paragraph_continues {
+                    out.push(Event::Start(Tag::Paragraph));
+                }
+                i += 1 + header.consumed;
+            }
+            Event::End(TagEnd::BlockQuote(_)) => {
+                if open_quotes.pop() == Some(true) {
+                    out.push(Event::Html("</div>\n".into()));
+                } else {
+                    out.push(events[i].clone());
+                }
+                i += 1;
+            }
+            _ => {
+                out.push(events[i].clone());
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+struct Header {
+    callout: Callout,
+    /// Events making up the header, from the paragraph's start to the line break.
+    consumed: usize,
+    /// The header line is followed by more text in the same paragraph.
+    paragraph_continues: bool,
+}
+
+/// Reads a callout header from the events following a blockquote's start.
+///
+/// pulldown-cmark splits a line into several Text events (at `[`, `!`, `]`), so the header is
+/// put back together up to the first line break.
+fn read_header(events: &[Event<'_>]) -> Option<Header> {
+    let [Event::Start(Tag::Paragraph), rest @ ..] = events else {
+        return None;
+    };
+    let mut line = String::new();
+    for (n, event) in rest.iter().enumerate() {
+        match event {
+            Event::Text(text) => line.push_str(text),
+            Event::SoftBreak | Event::HardBreak | Event::End(TagEnd::Paragraph) => {
+                return parse_callout(&line).map(|callout| Header {
+                    callout,
+                    consumed: n + 2,
+                    paragraph_continues: !matches!(event, Event::End(TagEnd::Paragraph)),
+                });
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn callout_opening(kind: &str, title: &str) -> String {
+    let mut title_xhtml = String::new();
+    // Writing into a String cannot fail.
+    escape_html(&mut title_xhtml, title).unwrap();
+    format!("<div class=\"callout callout-{kind}\">\n<p class=\"callout-title\"><strong>{title_xhtml}</strong></p>\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn href_of(name: &str) -> Option<String> {
+        (name == "In book").then(|| "note-1.xhtml".to_string())
+    }
+
+    fn no_links(_: &str) -> Option<String> {
+        None
+    }
+
+    #[test]
+    fn links_inside_the_book_point_to_their_page() {
+        assert_eq!(
+            to_xhtml("See [[In book|this note]] and [[In book#Part]].", href_of),
+            "<p>See <a href=\"note-1.xhtml\">this note</a> and <a href=\"note-1.xhtml\">In book#Part</a>.</p>\n"
+        );
+    }
+
+    #[test]
+    fn links_outside_the_book_keep_their_text() {
+        assert_eq!(to_xhtml("See [[Elsewhere]].", href_of), "<p>See Elsewhere.</p>\n");
+    }
+
+    #[test]
+    fn reads_a_callout_header() {
+        assert_eq!(
+            parse_callout("[!WARNING]- Pièges "),
+            Some(Callout { kind: "warning".into(), title: Some("Pièges".into()) })
+        );
+        assert_eq!(parse_callout("[!quote]"), Some(Callout { kind: "quote".into(), title: None }));
+        assert_eq!(parse_callout("[link] text"), None);
+        assert_eq!(parse_callout("[!two words]"), None);
+    }
+
+    #[test]
+    fn a_callout_becomes_a_titled_block() {
+        assert_eq!(
+            to_xhtml("> [!example] Le loup-garou\n> Trois façons.\n", no_links),
+            "<div class=\"callout callout-example\">\n<p class=\"callout-title\"><strong>Le loup-garou</strong></p>\n<p>Trois façons.</p>\n</div>\n"
+        );
+    }
+
+    #[test]
+    fn a_callout_without_title_takes_its_kind_heading() {
+        assert_eq!(
+            to_xhtml("> [!IMPORTANT]\n> - point\n", no_links),
+            "<div class=\"callout callout-important\">\n<p class=\"callout-title\"><strong>Important</strong></p>\n<ul>\n<li>point</li>\n</ul>\n</div>\n"
+        );
+    }
+
+    #[test]
+    fn a_quote_callout_stays_a_blockquote() {
+        assert_eq!(
+            to_xhtml("> [!quote]\n> \"Three clues.\"\n", no_links),
+            "<blockquote>\n<p>\"Three clues.\"</p>\n</blockquote>\n"
+        );
+    }
+
+    #[test]
+    fn a_titled_quote_callout_closes_as_a_block() {
+        assert_eq!(
+            to_xhtml("> [!quote] Alexander\n> Text.\n", no_links),
+            "<div class=\"callout callout-quote\">\n<p class=\"callout-title\"><strong>Alexander</strong></p>\n<p>Text.</p>\n</div>\n"
+        );
+    }
+
+    #[test]
+    fn a_plain_blockquote_is_left_alone() {
+        assert_eq!(to_xhtml("> Just a quote.\n", no_links), "<blockquote>\n<p>Just a quote.</p>\n</blockquote>\n");
+    }
+}
