@@ -3,6 +3,12 @@ name = "reliure"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.87"
+description = "Bind Obsidian notes into EPUB books for e-readers"
+license = "MIT"
+repository = "https://github.com/kornifex/reliure"
+readme = "README.md"
+keywords = ["obsidian", "epub", "ebook", "markdown", "e-reader"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.104"
