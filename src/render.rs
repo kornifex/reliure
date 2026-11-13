@@ -2,13 +2,15 @@ use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html
 use pulldown_cmark_escape::escape_html;
 
 use crate::book::note_name;
+use crate::lang::Lang;
 
 /// Renders an Obsidian note body to an XHTML fragment.
 ///
 /// `href_of` gives the target of a `[[link]]` inside the book, from the linked note's name;
 /// a link to a note outside the book keeps its text and loses its link. Callouts become
-/// framed blocks headed by their title, except quotes, which stay plain blockquotes.
-pub fn to_xhtml(markdown: &str, href_of: impl Fn(&str) -> Option<String>) -> String {
+/// framed blocks headed by their title, or by their kind's name in `lang`; untitled quotes
+/// stay plain blockquotes.
+pub fn to_xhtml(markdown: &str, lang: Lang, href_of: impl Fn(&str) -> Option<String>) -> String {
     let options = Options::ENABLE_WIKILINKS
         | Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
@@ -39,7 +41,7 @@ pub fn to_xhtml(markdown: &str, href_of: impl Fn(&str) -> Option<String>) -> Str
         })
         .collect();
     let mut xhtml = String::new();
-    html::push_html(&mut xhtml, rewrite_callouts(events).into_iter());
+    html::push_html(&mut xhtml, rewrite_callouts(events, lang).into_iter());
     xhtml
 }
 
@@ -64,10 +66,20 @@ fn parse_callout(line: &str) -> Option<Callout> {
     })
 }
 
-/// The heading Obsidian shows for a callout without a title, in French.
-fn default_title(kind: &str) -> String {
-    let label = match kind {
+/// The heading of a callout without a title: like Obsidian, its kind capitalized
+/// (`[!tip]` → "Tip"), translated when `lang` has a name for it.
+fn default_title(kind: &str, lang: Lang) -> String {
+    let translated = match lang {
+        Lang::En => None,
+        Lang::Fr => french_title(kind),
+    };
+    translated.map_or_else(|| capitalize(kind), str::to_string)
+}
+
+fn french_title(kind: &str) -> Option<&'static str> {
+    Some(match kind {
         "abstract" | "summary" | "tldr" => "En bref",
+        "note" => "Note",
         "info" => "Info",
         "tip" | "hint" => "Astuce",
         "important" => "Important",
@@ -79,14 +91,20 @@ fn default_title(kind: &str) -> String {
         "failure" | "fail" | "missing" => "Échec",
         "todo" => "À faire",
         "bug" => "Bug",
-        _ => "Note",
-    };
-    label.to_string()
+        _ => return None,
+    })
+}
+
+fn capitalize(word: &str) -> String {
+    let mut chars = word.chars();
+    chars
+        .next()
+        .map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
 }
 
 /// Turns the blockquotes that open with a callout header into `div.callout` blocks with their
 /// title, and strips the header off untitled quote callouts, which stay blockquotes.
-fn rewrite_callouts(events: Vec<Event<'_>>) -> Vec<Event<'_>> {
+fn rewrite_callouts(events: Vec<Event<'_>>, lang: Lang) -> Vec<Event<'_>> {
     let mut out = Vec::with_capacity(events.len());
     // One entry per open blockquote: whether it closes as a callout div.
     let mut open_quotes: Vec<bool> = Vec::new();
@@ -105,7 +123,7 @@ fn rewrite_callouts(events: Vec<Event<'_>>) -> Vec<Event<'_>> {
                 if stays_quote {
                     out.push(events[i].clone());
                 } else {
-                    let title = title.unwrap_or_else(|| default_title(&kind));
+                    let title = title.unwrap_or_else(|| default_title(&kind, lang));
                     out.push(Event::Html(callout_opening(&kind, &title).into()));
                 }
                 open_quotes.push(!stays_quote);
@@ -186,14 +204,14 @@ mod tests {
     #[test]
     fn links_inside_the_book_point_to_their_page() {
         assert_eq!(
-            to_xhtml("See [[In book|this note]] and [[In book#Part]].", href_of),
+            to_xhtml("See [[In book|this note]] and [[In book#Part]].", Lang::En, href_of),
             "<p>See <a href=\"note-1.xhtml\">this note</a> and <a href=\"note-1.xhtml\">In book#Part</a>.</p>\n"
         );
     }
 
     #[test]
     fn links_outside_the_book_keep_their_text() {
-        assert_eq!(to_xhtml("See [[Elsewhere]].", href_of), "<p>See Elsewhere.</p>\n");
+        assert_eq!(to_xhtml("See [[Elsewhere]].", Lang::En, href_of), "<p>See Elsewhere.</p>\n");
     }
 
     #[test]
@@ -210,7 +228,7 @@ mod tests {
     #[test]
     fn a_callout_becomes_a_titled_block() {
         assert_eq!(
-            to_xhtml("> [!example] Le loup-garou\n> Trois façons.\n", no_links),
+            to_xhtml("> [!example] Le loup-garou\n> Trois façons.\n", Lang::Fr, no_links),
             "<div class=\"callout callout-example\">\n<p class=\"callout-title\"><strong>Le loup-garou</strong></p>\n<p>Trois façons.</p>\n</div>\n"
         );
     }
@@ -218,15 +236,21 @@ mod tests {
     #[test]
     fn a_callout_without_title_takes_its_kind_heading() {
         assert_eq!(
-            to_xhtml("> [!IMPORTANT]\n> - point\n", no_links),
-            "<div class=\"callout callout-important\">\n<p class=\"callout-title\"><strong>Important</strong></p>\n<ul>\n<li>point</li>\n</ul>\n</div>\n"
+            to_xhtml("> [!WARNING]\n> - point\n", Lang::En, no_links),
+            "<div class=\"callout callout-warning\">\n<p class=\"callout-title\"><strong>Warning</strong></p>\n<ul>\n<li>point</li>\n</ul>\n</div>\n"
         );
+    }
+
+    #[test]
+    fn the_kind_heading_is_translated_when_known() {
+        assert_eq!(default_title("warning", Lang::Fr), "Attention");
+        assert_eq!(default_title("custom-kind", Lang::Fr), "Custom-kind");
     }
 
     #[test]
     fn a_quote_callout_stays_a_blockquote() {
         assert_eq!(
-            to_xhtml("> [!quote]\n> \"Three clues.\"\n", no_links),
+            to_xhtml("> [!quote]\n> \"Three clues.\"\n", Lang::En, no_links),
             "<blockquote>\n<p>\"Three clues.\"</p>\n</blockquote>\n"
         );
     }
@@ -234,13 +258,13 @@ mod tests {
     #[test]
     fn a_titled_quote_callout_closes_as_a_block() {
         assert_eq!(
-            to_xhtml("> [!quote] Alexander\n> Text.\n", no_links),
+            to_xhtml("> [!quote] Alexander\n> Text.\n", Lang::En, no_links),
             "<div class=\"callout callout-quote\">\n<p class=\"callout-title\"><strong>Alexander</strong></p>\n<p>Text.</p>\n</div>\n"
         );
     }
 
     #[test]
     fn a_plain_blockquote_is_left_alone() {
-        assert_eq!(to_xhtml("> Just a quote.\n", no_links), "<blockquote>\n<p>Just a quote.</p>\n</blockquote>\n");
+        assert_eq!(to_xhtml("> Just a quote.\n", Lang::En, no_links),"<blockquote>\n<p>Just a quote.</p>\n</blockquote>\n");
     }
 }

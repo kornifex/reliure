@@ -40,9 +40,9 @@ impl Vault {
         self.notes.get(name)
     }
 
-    /// The hubs marked `livre: true`, sorted by name.
-    pub fn books(&self) -> Vec<&Note> {
-        let mut hubs: Vec<&Note> = self.notes.values().filter(|note| note.properties.livre).collect();
+    /// The hubs whose checkbox `property` is checked, sorted by name.
+    pub fn books(&self, property: &str) -> Vec<&Note> {
+        let mut hubs: Vec<&Note> = self.notes.values().filter(|note| note.is_checked(property)).collect();
         hubs.sort_by(|a, b| a.name.cmp(&b.name));
         hubs
     }

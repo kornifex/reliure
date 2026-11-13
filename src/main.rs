@@ -1,5 +1,6 @@
 mod book;
 mod epub;
+mod lang;
 mod note;
 mod render;
 mod vault;
@@ -9,29 +10,38 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use clap::Parser;
 
+use crate::lang::Lang;
 use crate::vault::Vault;
 
-/// Binds Obsidian notes into EPUB books: one book per hub marked `livre: true`.
+/// Binds Obsidian notes into EPUB books for e-readers: one book per hub note whose
+/// checkbox property (`book` by default) is checked.
 #[derive(Parser)]
+#[command(version, about)]
 struct Cli {
     /// Root folder of the Obsidian vault.
     vault: PathBuf,
     /// Folder the EPUB files are written to.
     #[arg(long, default_value = ".")]
     out: PathBuf,
+    /// Checkbox property marking a hub as a book.
+    #[arg(long, default_value = "book")]
+    property: String,
+    /// Language of the books: EPUB metadata and callout headings.
+    #[arg(long, value_enum, default_value_t = Lang::En)]
+    lang: Lang,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let vault = Vault::load(&cli.vault)?;
-    let hubs = vault.books();
+    let hubs = vault.books(&cli.property);
     if hubs.is_empty() {
-        bail!("no note has `livre: true` in {}", cli.vault.display());
+        bail!("no note has `{}: true` in {}", cli.property, cli.vault.display());
     }
     for hub in hubs {
         let book = book::plan(hub, |name| vault.get(name).is_some());
         let path = cli.out.join(format!("{}.epub", hub.name));
-        epub::write(&book, &vault, &path)?;
+        epub::write(&book, &vault, cli.lang, &path)?;
         println!("{}", path.display());
     }
     Ok(())

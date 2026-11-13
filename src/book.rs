@@ -110,10 +110,10 @@ fn listed_notes(markdown: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::note::Properties;
+    use serde_yaml_ng::Mapping;
 
     fn hub(body: &str) -> Note {
-        Note { name: "Hub".into(), properties: Properties::default(), body: body.into() }
+        Note { name: "Hub".into(), properties: Mapping::new(), body: body.into() }
     }
 
     #[test]

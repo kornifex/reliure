@@ -1,19 +1,18 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde_yaml_ng::{Mapping, Value};
 
 /// A note of the vault, its name being the file name without `.md`, as `[[links]]` write it.
 pub struct Note {
     pub name: String,
-    pub properties: Properties,
+    pub properties: Mapping,
     pub body: String,
 }
 
-/// The note properties reliure reads; the others are ignored.
-#[derive(Deserialize, Default)]
-pub struct Properties {
-    /// Marks a hub to be bound into a book.
-    #[serde(default)]
-    pub livre: bool,
+impl Note {
+    /// Whether the checkbox property `property` is checked.
+    pub fn is_checked(&self, property: &str) -> bool {
+        matches!(self.properties.get(property), Some(Value::Bool(true)))
+    }
 }
 
 /// Parses a note's text into its properties and its body.
@@ -24,7 +23,7 @@ pub fn parse(name: String, text: &str) -> Result<Note> {
     let properties = match frontmatter {
         Some(yaml) if !yaml.trim().is_empty() => serde_yaml_ng::from_str(yaml)
             .with_context(|| format!("invalid properties in note {name}"))?,
-        _ => Properties::default(),
+        _ => Mapping::new(),
     };
     Ok(Note {
         name,
@@ -53,23 +52,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_livre_and_strips_the_frontmatter() {
-        let note = parse("Hub".into(), "---\ntype: hub\nlivre: true\n---\nBody\n").unwrap();
-        assert!(note.properties.livre);
+    fn reads_a_checkbox_and_strips_the_frontmatter() {
+        let note = parse("Hub".into(), "---\ntype: hub\nbook: true\ndraft: false\n---\nBody\n").unwrap();
+        assert!(note.is_checked("book"));
+        assert!(!note.is_checked("draft"));
+        assert!(!note.is_checked("type"));
         assert_eq!(note.body, "Body\n");
     }
 
     #[test]
     fn a_note_without_frontmatter_keeps_its_whole_text() {
         let note = parse("Note".into(), "# Title\n---\ntext\n").unwrap();
-        assert!(!note.properties.livre);
+        assert!(!note.is_checked("book"));
         assert_eq!(note.body, "# Title\n---\ntext\n");
     }
 
     #[test]
     fn an_empty_frontmatter_is_no_properties() {
         let note = parse("Note".into(), "---\n---\nBody").unwrap();
-        assert!(!note.properties.livre);
+        assert!(note.properties.is_empty());
         assert_eq!(note.body, "Body");
     }
 }
