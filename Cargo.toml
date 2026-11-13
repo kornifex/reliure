@@ -33,3 +33,9 @@ allow_attributes_without_reason = "warn"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+# A smaller, faster binary for `cargo install`, at the cost of a slower release build.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
