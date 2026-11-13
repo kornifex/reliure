@@ -69,7 +69,7 @@ In the pages:
 - tables of 5 columns or more, too wide for a small screen, become one block per row: the row's first cell as a bold title, then one `Header: value` line per other column, empty cells left out. Narrower tables stay tables;
 - note properties (the YAML frontmatter) and comments (`%%…%%`) are left out.
 
-reliure finds notes by name, as Obsidian links do, so note names must be unique across the vault. Hidden folders (`.obsidian`, `.trash`) are skipped.
+reliure finds notes as Obsidian links do: by name, whatever the case (`[[pacing]]` finds `Pacing.md`), or by the end of their path when several files share a name (`[[Rules/Pacing]]` finds `Rules/Pacing.md`, not `Drafts/Pacing.md`). A path from the vault's root wins over deeper ones, as in Obsidian: `[[Pacing]]` finds `Pacing.md` at the root before `Drafts/Pacing.md`. When a book binds a link that several notes match, reliure stops and lists their paths rather than guess; names no book binds may repeat, like a `README` in each folder. Two books can't share a name either, even in a different case, as they would be written to the same file. Hidden folders (`.obsidian`, `.trash`) are skipped.
 
 ## Getting the books on a reader
 

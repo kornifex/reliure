@@ -13,12 +13,11 @@ use crate::vault::Vault;
 const STYLESHEET: &str = include_str!("stylesheet.css");
 
 /// Writes `book` as an EPUB file at `path`, one page for the intro, then for each chapter
-/// a page with its text followed by a page per note.
+/// a page with its text followed by a page per note. Links find their notes in `vault`.
 pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> {
-    let mut notes = BoundNotes::default();
-    for (i, name) in book.chapters.iter().flat_map(|chapter| &chapter.notes).enumerate() {
-        // The plan only lists notes found in the vault.
-        notes.insert(name, format!("note-{i}.xhtml"), &vault.get(name).unwrap().body);
+    let mut notes = BoundNotes::new(vault);
+    for (i, note) in book.chapters.iter().flat_map(|chapter| &chapter.notes).enumerate() {
+        notes.insert(note, format!("note-{i}.xhtml"));
     }
     let render_page = |title: &str, markdown: &str| page(title, &to_xhtml(markdown, lang, &notes), lang);
 
@@ -38,13 +37,12 @@ pub fn write(book: &Book, vault: &Vault, lang: Lang, path: &Path) -> Result<()> 
             EpubContent::new(format!("chapter-{i}.xhtml"), render_page(&chapter.title, &chapter.text).as_bytes())
                 .title(&chapter.title),
         )?;
-        for name in &chapter.notes {
-            // Both found above: the note in the vault, its page among the bound notes.
-            let note = vault.get(name).unwrap();
-            let file = notes.file(name).unwrap();
+        for note in &chapter.notes {
+            // Every note of the chapters was bound above.
+            let file = notes.file(note).unwrap();
             epub.add_content(
-                EpubContent::new(file, render_page(name, &note.body).as_bytes())
-                    .title(name)
+                EpubContent::new(file, render_page(&note.name, &note.body).as_bytes())
+                    .title(&note.name)
                     .level(2),
             )?;
         }

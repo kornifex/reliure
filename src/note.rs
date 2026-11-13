@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use pulldown_cmark::{Event, Parser, Tag};
@@ -7,6 +8,9 @@ use serde_yaml_ng::{Mapping, Value};
 /// A note of the vault, its name being the file name without `.md`, as `[[links]]` write it.
 pub struct Note {
     pub name: String,
+    /// The note's file, relative to the vault's root (`Folder/Note.md`): several files may
+    /// share a name.
+    pub path: PathBuf,
     pub properties: Mapping,
     pub body: String,
 }
@@ -16,20 +20,33 @@ impl Note {
     pub fn is_checked(&self, property: &str) -> bool {
         matches!(self.properties.get(property), Some(Value::Bool(true)))
     }
+
+    /// A note without properties at `path` in the vault, named after its file.
+    #[cfg(test)]
+    pub fn at(path: &str, body: &str) -> Note {
+        let path = PathBuf::from(path);
+        Note {
+            name: path.file_stem().unwrap().to_string_lossy().into_owned(),
+            path,
+            properties: Mapping::new(),
+            body: body.into(),
+        }
+    }
 }
 
 /// Parses a note's text into its properties and its body.
 ///
-/// Fails when the YAML frontmatter is invalid, naming the note.
-pub fn parse(name: String, text: &str) -> Result<Note> {
+/// Fails when the YAML frontmatter is invalid, naming the note's file.
+pub fn parse(name: String, path: PathBuf, text: &str) -> Result<Note> {
     let (frontmatter, body) = split_frontmatter(text);
     let properties = match frontmatter {
         Some(yaml) if !yaml.trim().is_empty() => serde_yaml_ng::from_str(yaml)
-            .with_context(|| format!("invalid properties in note {name}"))?,
+            .with_context(|| format!("invalid properties in {}", path.display()))?,
         _ => Mapping::new(),
     };
     Ok(Note {
         name,
+        path,
         properties,
         body: strip_comments(body),
     })
@@ -87,7 +104,7 @@ mod tests {
 
     #[test]
     fn reads_a_checkbox_and_strips_the_frontmatter() {
-        let note = parse("Hub".into(), "---\ntype: hub\nbook: true\ndraft: false\n---\nBody\n").unwrap();
+        let note = parse("Hub".into(), "Hub.md".into(), "---\ntype: hub\nbook: true\ndraft: false\n---\nBody\n").unwrap();
         assert!(note.is_checked("book"));
         assert!(!note.is_checked("draft"));
         assert!(!note.is_checked("type"));
@@ -96,27 +113,27 @@ mod tests {
 
     #[test]
     fn a_note_without_frontmatter_keeps_its_whole_text() {
-        let note = parse("Note".into(), "# Title\n---\ntext\n").unwrap();
+        let note = parse("Note".into(), "Note.md".into(), "# Title\n---\ntext\n").unwrap();
         assert!(!note.is_checked("book"));
         assert_eq!(note.body, "# Title\n---\ntext\n");
     }
 
     #[test]
     fn an_empty_frontmatter_is_no_properties() {
-        let note = parse("Note".into(), "---\n---\nBody").unwrap();
+        let note = parse("Note".into(), "Note.md".into(), "---\n---\nBody").unwrap();
         assert!(note.properties.is_empty());
         assert_eq!(note.body, "Body");
     }
 
     #[test]
     fn an_inline_comment_is_removed() {
-        let note = parse("Note".into(), "a %%hidden%% b\n").unwrap();
+        let note = parse("Note".into(), "Note.md".into(), "a %%hidden%% b\n").unwrap();
         assert_eq!(note.body, "a  b\n");
     }
 
     #[test]
     fn a_comment_spanning_lines_is_removed() {
-        let note = parse("Note".into(), "---\nbook: true\n---\nBefore\n%%\nhidden\n- [[A]]\n%%\nAfter\n").unwrap();
+        let note = parse("Note".into(), "Note.md".into(), "---\nbook: true\n---\nBefore\n%%\nhidden\n- [[A]]\n%%\nAfter\n").unwrap();
         assert!(note.is_checked("book"));
         assert_eq!(note.body, "Before\n\nAfter\n");
     }
@@ -124,12 +141,12 @@ mod tests {
     #[test]
     fn percent_signs_in_code_are_kept() {
         let text = "Type `%%x%%` here.\n\n```\n%% kept %%\n```\n";
-        assert_eq!(parse("Note".into(), text).unwrap().body, text);
+        assert_eq!(parse("Note".into(), "Note.md".into(), text).unwrap().body, text);
     }
 
     #[test]
     fn an_unclosed_comment_hides_the_rest_of_the_note() {
-        let note = parse("Note".into(), "Shown %% hidden\n\n`code`\nstill hidden\n").unwrap();
+        let note = parse("Note".into(), "Note.md".into(), "Shown %% hidden\n\n`code`\nstill hidden\n").unwrap();
         assert_eq!(note.body, "Shown ");
     }
 }

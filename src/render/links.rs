@@ -1,16 +1,22 @@
 //! The `[[links]]` pass: a link to a note of the book leads to its page, or to a heading of
 //! it; a link to a note outside the book keeps its text and loses its link.
 use std::collections::HashMap;
+use std::path::Path;
 
 use pulldown_cmark::{CowStr, Event, LinkType, Tag, TagEnd};
 use pulldown_cmark_escape::escape_html;
 
 use super::headings::{self, Heading};
+use crate::note::Note;
+use crate::vault::{Lookup, Vault};
 
 /// The notes bound in a book, as links reach them: each one's page and headings.
-#[derive(Default)]
 pub struct BoundNotes<'a> {
-    pages: HashMap<&'a str, NotePage>,
+    /// Where links find their notes, whichever way they write them (`[[Note]]`,
+    /// `[[Folder/Note]]`, `[[note]]`).
+    vault: &'a Vault,
+    /// By the note's path, which tells it apart from the notes sharing its name.
+    pages: HashMap<&'a Path, NotePage>,
 }
 
 /// The page of a bound note, and the headings a link to it can lead to.
@@ -20,19 +26,28 @@ struct NotePage {
 }
 
 impl<'a> BoundNotes<'a> {
-    /// Binds the note `name`, whose body is `body`, to the page `file`.
-    pub fn insert(&mut self, name: &'a str, file: String, body: &str) {
-        self.pages.insert(name, NotePage { file, headings: headings::headings(body) });
+    /// No note bound yet, links finding their notes in `vault`.
+    pub fn new(vault: &'a Vault) -> Self {
+        BoundNotes { vault, pages: HashMap::new() }
     }
 
-    /// The page of the note `name`, when it is bound.
-    pub fn file(&self, name: &str) -> Option<&str> {
-        self.pages.get(name).map(|page| page.file.as_str())
+    /// Binds `note` to the page `file`.
+    pub fn insert(&mut self, note: &'a Note, file: String) {
+        self.pages.insert(&note.path, NotePage { file, headings: headings::headings(&note.body) });
     }
 
-    /// Where a link to the note `name` leads: its page, at `heading` when the note has it.
-    fn href(&self, name: &str, heading: Option<&str>) -> Option<String> {
-        let page = self.pages.get(name)?;
+    /// The page of `note`, when it is bound.
+    pub fn file(&self, note: &Note) -> Option<&str> {
+        self.pages.get(note.path.as_path()).map(|page| page.file.as_str())
+    }
+
+    /// Where a link to `note`, as written, leads: the note's page, at `heading` when the note
+    /// has it. A link several notes match leads nowhere, as a link to a missing note.
+    fn href(&self, note: &str, heading: Option<&str>) -> Option<String> {
+        let Lookup::Found(note) = self.vault.get(note) else {
+            return None;
+        };
+        let page = self.pages.get(note.path.as_path())?;
         Some(match heading.and_then(|text| headings::find(&page.headings, text)) {
             Some(heading) => format!("{}#{}", page.file, heading.id),
             None => page.file.clone(),
@@ -41,7 +56,7 @@ impl<'a> BoundNotes<'a> {
 }
 
 /// What a wikilink points to: `Note`, `Note#Heading`, `Note#^block`, or `#Heading` in the
-/// same note.
+/// same note. `Note` may be the end of its path, `Folder/Note`.
 struct Target<'u> {
     /// Empty for a link inside the note.
     note: &'u str,
@@ -129,13 +144,43 @@ fn link_opening(href: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::lang::Lang;
+    use crate::note::Note;
     use crate::render::{BoundNotes, to_xhtml};
+    use crate::vault::Vault;
 
-    /// Renders `markdown` in a book binding the note "In book", which has a French heading.
+    /// Renders `markdown` in a book binding the note "In book", which has a French heading,
+    /// and one of the two notes named "Twin". "Elsewhere" is in the vault, not in the book.
     fn render(markdown: &str) -> String {
-        let mut notes = BoundNotes::default();
-        notes.insert("In book", "note-1.xhtml".into(), "Text\n\n## Méthode de préparation\n");
+        let vault = Vault::from_notes([
+            Note::at("folder/In book.md", "Text\n\n## Méthode de préparation\n"),
+            Note::at("one/Twin.md", ""),
+            Note::at("two/Twin.md", ""),
+            Note::at("Elsewhere.md", ""),
+        ]);
+        let mut notes = BoundNotes::new(&vault);
+        for (target, file) in [("In book", "note-1.xhtml"), ("one/Twin", "note-2.xhtml")] {
+            let crate::vault::Lookup::Found(note) = vault.get(target) else {
+                unreachable!("{target} is in the vault");
+            };
+            notes.insert(note, file.into());
+        }
         to_xhtml(markdown, Lang::En, &notes)
+    }
+
+    #[test]
+    fn links_by_path_or_in_another_case_lead_to_the_same_page() {
+        assert_eq!(
+            render("See [[folder/In book]] and [[in BOOK]]."),
+            "<p>See <a href=\"note-1.xhtml\">folder/In book</a> and <a href=\"note-1.xhtml\">in BOOK</a>.</p>\n"
+        );
+    }
+
+    #[test]
+    fn an_ambiguous_link_keeps_its_text_even_when_one_of_its_notes_is_bound() {
+        assert_eq!(
+            render("See [[Twin]] and [[one/Twin]]."),
+            "<p>See Twin and <a href=\"note-2.xhtml\">one/Twin</a>.</p>\n"
+        );
     }
 
     #[test]

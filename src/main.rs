@@ -42,12 +42,12 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let vault = Vault::load(&cli.vault)?;
-    let hubs = vault.books(&cli.property);
+    let hubs = vault.books(&cli.property)?;
     if hubs.is_empty() {
         bail!("no note has `{}: true` in {}", cli.property, cli.vault.display());
     }
     for hub in hubs {
-        let book = book::plan(hub, |name| vault.get(name).is_some());
+        let book = book::plan(hub, &vault)?;
         let path = cli.out.join(format!("{}.epub", hub.name));
         epub::write(&book, &vault, cli.lang, &path)?;
         println!("{}", path.display());

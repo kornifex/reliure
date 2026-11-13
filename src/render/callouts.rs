@@ -153,6 +153,7 @@ fn callout_opening(kind: &str, title: &str) -> String {
 mod tests {
     use super::*;
     use crate::render::{BoundNotes, to_xhtml};
+    use crate::vault::Vault;
 
     #[test]
     fn reads_a_callout_header() {
@@ -168,7 +169,7 @@ mod tests {
     #[test]
     fn a_callout_becomes_a_titled_block() {
         assert_eq!(
-            to_xhtml("> [!example] Le loup-garou\n> Trois façons.\n", Lang::Fr, &BoundNotes::default()),
+            to_xhtml("> [!example] Le loup-garou\n> Trois façons.\n", Lang::Fr, &BoundNotes::new(&Vault::default())),
             "<div class=\"callout callout-example\">\n<p class=\"callout-title\"><strong>Le loup-garou</strong></p>\n<p>Trois façons.</p>\n</div>\n"
         );
     }
@@ -176,7 +177,7 @@ mod tests {
     #[test]
     fn a_callout_without_title_takes_its_kind_heading() {
         assert_eq!(
-            to_xhtml("> [!WARNING]\n> - point\n", Lang::En, &BoundNotes::default()),
+            to_xhtml("> [!WARNING]\n> - point\n", Lang::En, &BoundNotes::new(&Vault::default())),
             "<div class=\"callout callout-warning\">\n<p class=\"callout-title\"><strong>Warning</strong></p>\n<ul>\n<li>point</li>\n</ul>\n</div>\n"
         );
     }
@@ -190,7 +191,7 @@ mod tests {
     #[test]
     fn a_quote_callout_stays_a_blockquote() {
         assert_eq!(
-            to_xhtml("> [!quote]\n> \"Three clues.\"\n", Lang::En, &BoundNotes::default()),
+            to_xhtml("> [!quote]\n> \"Three clues.\"\n", Lang::En, &BoundNotes::new(&Vault::default())),
             "<blockquote>\n<p>\"Three clues.\"</p>\n</blockquote>\n"
         );
     }
@@ -198,13 +199,13 @@ mod tests {
     #[test]
     fn a_titled_quote_callout_closes_as_a_block() {
         assert_eq!(
-            to_xhtml("> [!quote] Alexander\n> Text.\n", Lang::En, &BoundNotes::default()),
+            to_xhtml("> [!quote] Alexander\n> Text.\n", Lang::En, &BoundNotes::new(&Vault::default())),
             "<div class=\"callout callout-quote\">\n<p class=\"callout-title\"><strong>Alexander</strong></p>\n<p>Text.</p>\n</div>\n"
         );
     }
 
     #[test]
     fn a_plain_blockquote_is_left_alone() {
-        assert_eq!(to_xhtml("> Just a quote.\n", Lang::En, &BoundNotes::default()),"<blockquote>\n<p>Just a quote.</p>\n</blockquote>\n");
+        assert_eq!(to_xhtml("> Just a quote.\n", Lang::En, &BoundNotes::new(&Vault::default())),"<blockquote>\n<p>Just a quote.</p>\n</blockquote>\n");
     }
 }

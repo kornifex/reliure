@@ -1,51 +1,67 @@
 //! The plan of a book, read from its hub.
 use std::collections::HashSet;
 
+use anyhow::{Result, bail};
 use pulldown_cmark::{Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd};
 
 use crate::note::Note;
+use crate::vault::{Lookup, Vault, display_paths};
 
-pub struct Book {
+pub struct Book<'a> {
     pub title: String,
     /// The hub's text before its first `##` heading.
     pub intro: String,
-    pub chapters: Vec<Chapter>,
+    pub chapters: Vec<Chapter<'a>>,
 }
 
-/// A `##` section of the hub: its text opens the chapter, then come the notes it lists.
-pub struct Chapter {
+/// A `##` section of the hub: its text opens the chapter, then come the notes it binds.
+pub struct Chapter<'a> {
     pub title: String,
     pub text: String,
-    pub notes: Vec<String>,
+    pub notes: Vec<&'a Note>,
 }
 
-/// Reads the plan of a book from its hub.
+/// Reads the plan of a book from its hub, finding the notes it binds in `vault`.
 ///
 /// A note enters the book when a list item of a `##` section opens with a link to it
 /// (`- **[[Note]]** : summary`), under the first chapter that lists it. Links elsewhere in
-/// the text, and links to notes missing from the vault (`in_vault` is false), stay references.
-pub fn plan(hub: &Note, in_vault: impl Fn(&str) -> bool) -> Book {
+/// the text, and links to notes missing from the vault, stay references.
+///
+/// Fails when the hub binds a link that several notes of the vault match.
+pub fn plan<'a>(hub: &Note, vault: &'a Vault) -> Result<Book<'a>> {
     let (intro, sections) = split_sections(&hub.body);
-    let mut bound = HashSet::from([hub.name.clone()]);
-    let chapters = sections
-        .into_iter()
-        .map(|(title, text)| Chapter {
-            title,
-            notes: listed_notes(text)
-                .into_iter()
-                .filter(|name| in_vault(name) && bound.insert(name.clone()))
-                .collect(),
-            text: text.to_string(),
-        })
-        .collect();
-    Book {
+    let mut bound = HashSet::from([hub.path.as_path()]);
+    let mut chapters = Vec::new();
+    for (title, text) in sections {
+        let mut notes = Vec::new();
+        for target in listed_notes(text) {
+            match vault.get(&target) {
+                Lookup::Found(note) => {
+                    if bound.insert(&note.path) {
+                        notes.push(note);
+                    }
+                }
+                Lookup::Missing => {}
+                // The hub listing itself binds nothing, even when another note has its name.
+                Lookup::Ambiguous(namesakes) if namesakes.iter().any(|note| note.path == hub.path) => {}
+                Lookup::Ambiguous(namesakes) => bail!(
+                    "book {} binds [[{target}]], which several notes match: {}",
+                    hub.name,
+                    display_paths(namesakes)
+                ),
+            }
+        }
+        chapters.push(Chapter { title, text: text.to_string(), notes });
+    }
+    Ok(Book {
         title: hub.name.clone(),
         intro: intro.to_string(),
         chapters,
-    }
+    })
 }
 
-/// The name of the note a link target points to: `Note#Heading` → `Note`.
+/// The note a link target points to, as written: `Note#Heading` → `Note`,
+/// `Folder/Note#Heading` → `Folder/Note`.
 pub fn note_name(target: &str) -> &str {
     target.split_once('#').map_or(target, |(name, _)| name)
 }
@@ -109,44 +125,120 @@ fn listed_notes(markdown: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
-    use serde_yaml_ng::Mapping;
 
     fn hub(body: &str) -> Note {
-        Note { name: "Hub".into(), properties: Mapping::new(), body: body.into() }
+        Note::at("Hub.md", body)
+    }
+
+    /// A vault holding an empty note at each of `paths`.
+    fn vault(paths: &[&str]) -> Vault {
+        Vault::from_notes(paths.iter().map(|path| Note::at(path, "")))
+    }
+
+    fn names<'a>(chapter: &Chapter<'a>) -> Vec<&'a str> {
+        chapter.notes.iter().map(|note| note.name.as_str()).collect()
+    }
+
+    fn paths<'a>(chapter: &Chapter<'a>) -> Vec<&'a Path> {
+        chapter.notes.iter().map(|note| note.path.as_path()).collect()
     }
 
     #[test]
     fn sections_become_chapters_listing_their_notes() {
-        let book = plan(
-            &hub("Intro\n\n## Design\n- **[[A]]** : a\n- [[B|bee]]\n\n## Table\n- **[[C]]** : c\n"),
-            |_| true,
-        );
+        let hub = hub("Intro\n\n## Design\n- **[[A]]** : a\n- [[B|bee]]\n\n## Table\n- **[[C]]** : c\n");
+        let vault = vault(&["A.md", "B.md", "C.md"]);
+        let book = plan(&hub, &vault).unwrap();
         assert_eq!(book.intro, "Intro\n\n");
-        let chapters: Vec<_> = book.chapters.iter().map(|c| (c.title.as_str(), c.notes.clone())).collect();
-        assert_eq!(chapters, [("Design", vec!["A".to_string(), "B".to_string()]), ("Table", vec!["C".to_string()])]);
+        let chapters: Vec<_> = book.chapters.iter().map(|c| (c.title.as_str(), names(c))).collect();
+        assert_eq!(chapters, [("Design", vec!["A", "B"]), ("Table", vec!["C"])]);
         assert_eq!(book.chapters[1].text, "- **[[C]]** : c\n");
     }
 
     #[test]
     fn a_note_listed_twice_is_bound_once() {
-        let book = plan(&hub("## One\n- [[A]]\n## Two\n- [[A]] (see One)\n- [[B]]\n"), |_| true);
-        assert_eq!(book.chapters[1].notes, ["B"]);
+        let hub = hub("## One\n- [[A]]\n## Two\n- [[A]] (see One)\n- [[B]]\n");
+        let vault = vault(&["A.md", "B.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[1]), ["B"]);
     }
 
     #[test]
     fn links_inside_text_and_missing_notes_stay_references() {
-        let book = plan(
-            &hub("## Words\n- **Clue**: leads to a [[Revelation]].\n- [[Missing]]\n- [[A#Part]]\n"),
-            |name| name != "Missing",
-        );
-        assert_eq!(book.chapters[0].notes, ["A"]);
+        let hub = hub("## Words\n- **Clue**: leads to a [[Revelation]].\n- [[Missing]]\n- [[A#Part]]\n");
+        let vault = vault(&["A.md", "Revelation.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[0]), ["A"]);
+    }
+
+    #[test]
+    fn a_book_binding_an_ambiguous_name_fails_naming_its_paths() {
+        let hub = hub("## Words\n- [[A]]\n");
+        let vault = vault(&["two/A.md", "one/A.md"]);
+        let Err(error) = plan(&hub, &vault) else {
+            panic!("A is ambiguous");
+        };
+        assert_eq!(error.to_string(), "book Hub binds [[A]], which several notes match: one/A.md, two/A.md");
+    }
+
+    #[test]
+    fn an_ambiguous_name_no_book_uses_is_ignored() {
+        let hub = hub("## Words\n- [[A]]\n");
+        let vault = vault(&["A.md", "one/README.md", "two/README.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[0]), ["A"]);
+    }
+
+    #[test]
+    fn an_ambiguous_name_used_as_a_reference_is_ignored() {
+        let hub = hub("## Words\n- **Clue**: [[README]]\n- [[A]], see [[README]]\n");
+        let vault = vault(&["A.md", "one/README.md", "two/README.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[0]), ["A"]);
+    }
+
+    #[test]
+    fn a_path_link_binds_the_note_at_that_path() {
+        let hub = hub("## Words\n- [[two/A]]\n");
+        let vault = vault(&["one/A.md", "two/A.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(paths(&book.chapters[0]), [Path::new("two/A.md")]);
+    }
+
+    #[test]
+    fn a_path_link_matching_several_notes_fails() {
+        let hub = hub("## Words\n- [[x/A]]\n");
+        let vault = vault(&["one/x/A.md", "two/x/A.md"]);
+        let Err(error) = plan(&hub, &vault) else {
+            panic!("x/A is ambiguous");
+        };
+        assert_eq!(error.to_string(), "book Hub binds [[x/A]], which several notes match: one/x/A.md, two/x/A.md");
+    }
+
+    #[test]
+    fn a_note_reached_by_name_and_by_path_is_bound_once() {
+        let hub = hub("## One\n- [[b]]\n## Two\n- [[dir/B]]\n");
+        let vault = vault(&["dir/B.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[0]), ["B"]);
+        assert!(book.chapters[1].notes.is_empty());
+    }
+
+    #[test]
+    fn a_hub_listing_itself_binds_nothing_even_when_its_name_is_shared() {
+        let hub = hub("## Words\n- [[Hub]]\n- [[A]]\n");
+        let vault = vault(&["Hub.md", "other/Hub.md", "A.md"]);
+        let book = plan(&hub, &vault).unwrap();
+        assert_eq!(names(&book.chapters[0]), ["A"]);
     }
 
     #[test]
     fn a_hub_whose_list_item_is_commented_out_binds_nothing() {
-        let hub = crate::note::parse("Hub".into(), "## Design\n%%\n- [[A]]\n%%\n- %%[[B]]%%\n").unwrap();
-        let book = plan(&hub, |_| true);
+        let hub = crate::note::parse("Hub".into(), "Hub.md".into(), "## Design\n%%\n- [[A]]\n%%\n- %%[[B]]%%\n").unwrap();
+        let vault = vault(&["A.md", "B.md"]);
+        let book = plan(&hub, &vault).unwrap();
         assert!(book.chapters[0].notes.is_empty());
     }
 }

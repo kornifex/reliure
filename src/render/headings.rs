@@ -103,9 +103,10 @@ mod tests {
     use super::*;
     use crate::lang::Lang;
     use crate::render::{BoundNotes, to_xhtml};
+    use crate::vault::Vault;
 
     fn render(markdown: &str) -> String {
-        to_xhtml(markdown, Lang::Fr, &BoundNotes::default())
+        to_xhtml(markdown, Lang::Fr, &BoundNotes::new(&Vault::default()))
     }
 
     #[test]

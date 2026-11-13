@@ -5,7 +5,7 @@ reliure binds notes of an Obsidian vault into EPUB books, to read them on an e-r
 ## Language
 
 **Vault**:
-The Obsidian folder the notes and attachments are read from. A name designates one note or one attachment across the whole vault.
+The Obsidian folder the notes and attachments are read from. A link designates a note or an attachment by its name, or by the end of its path when several files share that name; a link that several files match is ambiguous.
 
 **Hub**:
 A note that lists other notes, grouped under `##` sections. A hub marked with the book property is the plan of a book.
