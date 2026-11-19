@@ -10,6 +10,11 @@ ignore = [
     { id = "RUSTSEC-2026-0368", reason = "reliure never extracts a zip archive" },
     { id = "RUSTSEC-2026-0369", reason = "reliure never extracts a zip archive" },
     { id = "RUSTSEC-2026-0429", reason = "reliure never extracts a zip archive" },
+    { id = "RUSTSEC-2026-0545", reason = "reliure never extracts a zip archive" },
+    { id = "RUSTSEC-2026-0547", reason = "reliure never extracts a zip archive" },
+    { id = "RUSTSEC-2026-0548", reason = "reliure never extracts a zip archive" },
+    # chrono, through epub-builder: unmaintained, no known flaw, and epub-builder offers no way out.
+    { id = "RUSTSEC-2026-0543", reason = "epub-builder 0.8 depends on chrono" },
     # time, through zip: the RFC 2822 parser sits behind the `parsing` feature, which nothing
     # enables. The fix, time 0.3.47, needs Rust 1.88, past reliure's MSRV.
     { id = "RUSTSEC-2026-0009", reason = "time's parsing feature is off" },
