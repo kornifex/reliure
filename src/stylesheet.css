@@ -19,10 +19,11 @@ p {
   margin: 0 0 0.6em;
 }
 
+/* Narrow for small screens, yet wide enough for KOReader's bullet and to set items apart. */
 ul,
 ol {
   margin: 0 0 0.6em;
-  padding-left: 1.2em;
+  padding-left: 0.8em;
 }
 
 blockquote {
