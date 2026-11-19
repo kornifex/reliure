@@ -6,6 +6,7 @@ mod note;
 mod render;
 mod vault;
 
+use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
@@ -50,6 +51,8 @@ fn main() -> Result<()> {
             cli.vault.display()
         );
     }
+    fs::create_dir_all(&cli.out)
+        .with_context(|| format!("cannot create the folder {}", cli.out.display()))?;
     for hub in hubs {
         let book = book::plan(hub, &vault)?;
         let path = cli.out.join(format!("{}.epub", hub.name));

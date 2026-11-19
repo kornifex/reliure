@@ -99,6 +99,18 @@ fn binds_a_hub_into_a_book() {
 }
 
 #[test]
+fn creates_the_folder_the_books_go_to() {
+    let vault = vault();
+    let root = tempfile::tempdir().unwrap();
+    let out = root.path().join("books/new");
+
+    let output = reliure(vault.path(), &out, &[]);
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(out.join("Hub.epub").is_file());
+}
+
+#[test]
 fn embeds_a_note_without_binding_it() {
     let vault = vault_with(&[
         (
